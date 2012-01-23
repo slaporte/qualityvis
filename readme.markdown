@@ -9,10 +9,10 @@ We used a number of metrics aggregated into four areas of quality: richness, str
 
 ## About
 This tool was built by:
-* Ben Plowman
-* Mahmoud Hashemi
-* Sarah Nahm
-* Stephen LaPorte
+*	Ben Plowman
+*	Mahmoud Hashemi
+*	Sarah Nahm
+*	Stephen LaPorte
 
 ...with help and food from the [awesome hosts of the hackathon](https://www.mediawiki.org/wiki/Hackathon)!
 
