@@ -3,9 +3,22 @@
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src='gadget.js'></script>
 <link rel="stylesheet" href="style.css" />
+<script type='text/javascript'>
+  setTimeout("printPageStats()", 1500);
+  
+
+  function printPageStats() {
+    $('#testingHeading').append(page_title);
+    for(var stat in page_stats) {
+      $('#info').append('<li>' + stat + ': ' + page_stats[stat] + '</li>')
+    }
+  }
+</script>
 </head>
 <body>
 <h1 id='testingHeading'>testing article: </h1>
 <div id='bodyContent'><p>body text</p></div>
+<ol id="info">
+</ol>
 </body>
 </html>

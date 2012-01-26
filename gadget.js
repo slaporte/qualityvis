@@ -31,7 +31,7 @@ var rewards = {};
 if(testing == true) {
     var page_title = 'Charizard'; 
     var revid = 471874316; 
-    var articleId = 60000; 
+    var articleId = 24198906; 
 } else {
     var page_title = mw.config.get('wgTitle');
     var revid = mw.config.get('wgCurRevisionId');
@@ -192,11 +192,12 @@ function doAllQueries(success_callback) {
 registerQuery('domStats', 'http://en.wikipedia.org/w/api.php?action=parse&page=' + page_title + '&format=json&callback=?');
 registerQuery('editorStats', 'http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=' + page_title + '&rvprop=user&rvlimit=50&format=json&callback=?');
 registerQuery('inLinkStats', 'http://en.wikipedia.org/w/api.php?action=query&format=json&list=backlinks&bltitle=' + page_title + '&bllimit=500&blnamespace=0&callback=?');
-//registerQuery('feedbackStats', 'http://en.wikipedia.org/w/api.php?action=query&list=articlefeedback&afpageid=' + page_id + '&afuserrating=1&format=json&callback=?&afanontoken=01234567890123456789012345678912');
+registerQuery('feedbackStats', 'http://en.wikipedia.org/w/api.php?action=query&list=articlefeedback&afpageid=' + articleId + '&afuserrating=1&format=json&callback=?&afanontoken=01234567890123456789012345678912');
 registerQuery('searchStats', 'http://ajax.googleapis.com/ajax/services/search/web?v=1.0&q=' + page_title);
 registerQuery('newsStats', 'http://ajax.googleapis.com/ajax/services/search/news?v=1.0&q=' + page_title);
 registerQuery('wikitrustStats', 'http://query.yahooapis.com/v1/public/yql', null, {data : {q : 'select * from html where url ="http://en.collaborativetrust.com/WikiTrust/RemoteAPI?method=quality&revid=' + revid + '"',format : 'json'}});
-
+registerQuery('grokseStats', 'http://query.yahooapis.com/v1/public/yql', null, {data : {q : 'select * from json where url ="http://stats.grok.se/json/en/201201/' + page_title + '"',format : 'json'}});
+registerQuery('getAssessment', 'http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + page_title + '&rvprop=content&redirects=true&format=json&callback=?');
 
 function domStats(data) {
     var wikitext = data['parse']['text']['*'];
@@ -209,6 +210,11 @@ function domStats(data) {
     page_stats['external_links_in_section'] = $('#External_links', wikitext).parent().nextAll('ul').children().length;
     page_stats['external_links_total'] = data['parse']['externallinks'].length;
     page_stats['internal_links'] = data['parse']['links'].length;
+    page_stats['intro_p_count'] =  $('.mw-content-ltr p', wikitext).length;
+
+    page_stats['ref_needed_count'] = $('span:contains("citation needed")', wikitext).length;
+    page_stats['pov_statement_count'] = $('span:contains("neutrality")', wikitext).length;
+    page_stats['pov_statement_count'] = $('span:contains("neutrality")', wikitext).length;
 
 }
 
@@ -243,10 +249,10 @@ function feedbackStats(data) {
     var complete = ratings[2];
     var wellwritten = ratings[3];
 
-    page_stats['trustworthy'] = trustworthy['total'] / trustworthy['count'];
-    page_stats['objective'] = objective['total'] / objective['count'];
-    page_stats['complete'] = complete['total'] / complete['count'];
-    page_stats['wellwritten'] = wellwritten['total'] / wellwritten['count'];
+    page_stats['fbTrustworthy'] = trustworthy['total'] / trustworthy['count'];
+    page_stats['fbObjective'] = objective['total'] / objective['count'];
+    page_stats['fbComplete'] = complete['total'] / complete['count'];
+    page_stats['fbWellwritten'] = wellwritten['total'] / wellwritten['count'];
 }
 
 function searchStats(data) {
@@ -264,19 +270,71 @@ function keys(obj) {
 }
 
 function wikitrustStats(data) {
-    console.log(data);
+    page_stats['wikitrust'] = parseFloat(data.query.results.body.p);
+}
+
+function grokseStats(data) {
+    page_stats['pageVisits'] = data.query.results.json;
+}
+
+function getAssessment(data) {
+    for(var id in data['query']['pages']) {
+        if(!data['query']['pages'].hasOwnProperty) {
+            continue;
+        }
+        text = (data.query.pages[id].revisions['0']['*']);
+        /* From the 'metadata' gadget
+         * @author Outriggr - created the script and used to maintain it
+         * @author Pyrospirit - currently maintains and updates the script
+         */
+        var rating = 'none';
+        if (text.match(/\|\s*(class|currentstatus)\s*=\s*fa\b/i))
+            rating = 'fa';
+        else if (text.match(/\|\s*(class|currentstatus)\s*=\s*fl\b/i))
+            rating = 'fl';
+        else if (text.match(/\|\s*class\s*=\s*a\b/i)) {
+            if (text.match(/\|\s*class\s*=\s*ga\b|\|\s*currentstatus\s*=\s*(ffa\/)?ga\b/i))
+                rating = 'a/ga'; // A-class articles that are also GA's
+            else rating = 'a';
+        } else if (text.match(/\|\s*class\s*=\s*ga\b|\|\s*currentstatus\s*=\s*(ffa\/)?ga\b|\{\{\s*ga\s*\|/i)
+                   && !text.match(/\|\s*currentstatus\s*=\s*dga\b/i))
+            rating = 'ga';
+        else if (text.match(/\|\s*class\s*=\s*b\b/i))
+            rating = 'b';
+        else if (text.match(/\|\s*class\s*=\s*bplus\b/i))
+            rating = 'bplus'; // used by WP Math
+        else if (text.match(/\|\s*class\s*=\s*c\b/i))
+            rating = 'c';
+        else if (text.match(/\|\s*class\s*=\s*start/i))
+            rating = 'start';
+        else if (text.match(/\|\s*class\s*=\s*stub/i))
+            rating = 'stub';
+        else if (text.match(/\|\s*class\s*=\s*list/i))
+            rating = 'list';
+        else if (text.match(/\|\s*class\s*=\s*sl/i))
+            rating = 'sl'; // used by WP Plants
+        else if (text.match(/\|\s*class\s*=\s*(dab|disambig)/i))
+            rating = 'dab';
+        else if (text.match(/\|\s*class\s*=\s*cur(rent)?/i))
+            rating = 'cur';
+        else if (text.match(/\|\s*class\s*=\s*future/i))
+            rating = 'future';
+        page_stats['assessment'] = rating;
+    }
 }
 
 var score = {};
       
 function ollKomplete(){
     domStats(queryResults['domStats']);	
-    //feedbackStats(queryResults['feedbackStats']);
+    feedbackStats(queryResults['feedbackStats']);
     editorStats(queryResults['editorStats']);	
     inLinkStats(queryResults['inLinkStats']);	
     searchStats(queryResults['searchStats']);	
     newsStats(queryResults['newsStats']);
     wikitrustStats(queryResults['wikitrustStats']);
+    grokseStats(queryResults['grokseStats']);
+    getAssessment(queryResults['getAssessment']);
     score = calculate(page_stats, rewards);
     var ratio = (score.total.score+0.0)/score.total.max;
     
@@ -284,11 +342,9 @@ function ollKomplete(){
     $('div.top').css('width', percent+'px');
     $('div.bottom').css('width', (100-percent)+'px');
     $('#overall_percent').text(percent+'%');
-
-    if(testing == true) {
-        $('#testingHeading').append(page_title)
-    }
+   
 }    
+
 
 $(document).ready(function() {
 
