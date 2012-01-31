@@ -38,100 +38,105 @@ if(testing == true) {
     var articleId = mw.config.get('wgArticleId');
 }
 
+// Convenience functions for reward formulae
+function binStat(threshold, great, reward) {
+    return {'type':'bin','threshold': threshold, 'great': great,'reward': reward};
+}
+
+function rangeStat(start, end, max_score) {
+    return {'type':'range','start':start,'threshold':end,'reward':max_score};
+}
+
 /*
 * Metrics for article quality
 */
-rewards['vetted'] = {}
-rewards['vetted']['unique_authors'] = binStat(20, 40, 100);
-rewards['vetted']['paragraph_count'] = rangeStat(10, 30, 100);
-//rewards['vetted']['wikitrust_score'] = binStat(.;
+var rewards = {
+    'vetted': {
+	'unique_authors'	: binStat(20, 40, 100),
+	'paragraph_count'	: rangeStat(10, 30, 100)
+	},
+// rewards['vetted']['wikitrust_score'] = binStat(.;
 // rewards.vetted.['visits_per_last_edit'] = ;
 // rewards.vetted.['flags_total'] = ;
-
-rewards.structure = {};
+    'structure': {
+	'ref_section'		: binStat(1, 1, 100),
+	'external_links_total'	: binStat(10, 20, 100)
+	},
 // rewards.structure.intro_paragraph = ;
-rewards.structure.ref_section = binStat(1, 1, 100);
-rewards.structure.external_links_total = binStat(10, 20, 100);
 // rewards.structure.sections_per_link = binStat(;
-
-rewards.richness = {};
+    'richness': {
+	'image_count'		: binStat(2, 4, 100),
+	'external_links_total'	: binStat(10, 20, 100)
+	},
 // rewards.richness.length = ;
-rewards.richness.image_count = binStat(2, 4, 100);
-rewards.richness.external_links_total = binStat(10, 20, 100);
 // rewards.richness.audio = ;
 // rewards.geodata = ;
-
-rewards.integrated = {};
-rewards.integrated.category_count = binStat(3, 5, 100);
-rewards.integrated.incoming_links = binStat(3, 50, 100);
-rewards.integrated.outgoing_links = binStat(3, 50, 100);
+    'integrated': {
+	'category_count'	: binStat(3, 5, 100),
+	'incoming_links'	: binStat(3, 50, 100),
+	'outgoing_links'	: binStat(3, 50, 100)
+	},
 //rewards.integrated.read_more_section = ;
-
-rewards.community = {};
+    'community': {
+	'unique_authors'	: binStat(20, 40, 100)
+    },
 //rewards.community.assessment = ;
 //rewards.community.visits_per_day = ;
-rewards.community.unique_authors = binStat(20, 40, 100);
 //rewards.community.visits_per_last_edit = ;
 //rewards.community.flags_total = ;
 //rewards.community.trustworthy = ;
 //rewards.community.objective = ;
 //rewards.community.complete = ;
 //rewards.community.wellwritten = ;
-
-rewards.citations = {};
+    'citations': {
+	'ref_count'             : binStat(5, 10, 100)
+    },
 //rewards.citations.reference_count_per_paragraph = ;
-rewards.citations.ref_count = binStat(5, 10, 100);
 //rewards.citations.citation_flag = ;
-
-rewards.significance = {};
+    'significance': {
+	
+    }
 //rewards.significance.paragraph_per_web_results = {};
 //rewrads.significance.paragraph_per_news_results = {};
 //rewards.significance = binStat(;
-
-function binStat(threshold, great, reward) {
-	return {'type':'bin','threshold': threshold, 'great': great,'reward': reward};
-}
-
-function rangeStat(start, end, max_score) {
-	return {'type':'range','start':start,'threshold':end,'reward':max_score};
 }
 
 function calculate(stats, rewards) {
-	var area = keys(rewards), 
-		result = {},
-		val = 0;
-	for(var i = 0; i < area.length; i++) {
-		var attribs = keys(rewards[area[i]]);
-		for(var j = 0; j < attribs.length; j++) {
-			if(rewards[area[i]][attribs[j]].type == 'bin') {
-				if(stats[attribs[j]] >= rewards[area[i]][attribs[j]].great) {
-					val = rewards[area[i]][attribs[j]].reward;
-				} else if(stats[attribs[j]] >= rewards[area[i]][attribs[j]].threshold) {
-					val = rewards[area[i]][attribs[j]].reward * .7; 
-				}
-			} else if (rewards[area[i]][attribs[j]].type == 'range') {
-				var slope = rewards[area[i]][attribs[j]].reward / rewards[area[i]][attribs[j]].start;
-				if(stats[attribs[j]] < rewards[area[i]][attribs[j]].start){
-					val = (stats[attribs[j]]) * slope;
-				} else if(stats[attribs[j]] > rewards[area[i]][attribs[j]].threshold){
-					val = (rewards[area[i]][attribs[j]].reward - (stats[attribs[j]] - rewards[area[i]][attribs[j]].threshold)) * slope;
-					val = Math.max(0, val);
-				} else {
-					val = rewards[area[i]][attribs[j]].reward;	
-				}
-			}
-			
-		
-		result[area[i]] = result[area[i]] || {};
-		result[area[i]].score = result[area[i]].score + val || val;
-		result[area[i]].max = result[area[i]].max + rewards[area[i]][attribs[j]].reward || rewards[area[i]][attribs[j]].reward;
-
-		result['total'] = result['total'] || {};
-		result['total'].score = result['total'].score + val || val;
-		result['total'].max = result['total'].max + rewards[area[i]][attribs[j]].reward || rewards[area[i]][attribs[j]].reward;	
+    var area = keys(rewards), 
+    result = {},
+    val = 0;
+    for(var i = 0; i < area.length; i++) {
+	var attribs = keys(rewards[area[i]]);
+	for(var j = 0; j < attribs.length; j++) {
+	    if(rewards[area[i]][attribs[j]].type == 'bin') {
+		if(stats[attribs[j]] >= rewards[area[i]][attribs[j]].great) {
+		    val = rewards[area[i]][attribs[j]].reward;
+		} else if(stats[attribs[j]] >= rewards[area[i]][attribs[j]].threshold) {
+		    val = rewards[area[i]][attribs[j]].reward * .7; 
 		}
+	    } else if (rewards[area[i]][attribs[j]].type == 'range') {
+		var slope = rewards[area[i]][attribs[j]].reward / rewards[area[i]][attribs[j]].start;
+		if(stats[attribs[j]] < rewards[area[i]][attribs[j]].start){
+		    val = (stats[attribs[j]]) * slope;
+		} else if(stats[attribs[j]] > rewards[area[i]][attribs[j]].threshold){
+		    val = (rewards[area[i]][attribs[j]].reward - (stats[attribs[j]] - rewards[area[i]][attribs[j]].threshold)) * slope;
+		    val = Math.max(0, val);
+		} else {
+		    val = rewards[area[i]][attribs[j]].reward;	
+		}
+	    }
+	    
+	    
+	    result[area[i]] = result[area[i]] || {};
+	    result[area[i]].score = result[area[i]].score + val || val;
+	    result[area[i]].max = result[area[i]].max + rewards[area[i]][attribs[j]].reward || rewards[area[i]][attribs[j]].reward;
+
+	    result['total'] = result['total'] || {};
+	    result['total'].score = result['total'].score + val || val;
+	    result['total'].max = result['total'].max + rewards[area[i]][attribs[j]].reward || rewards[area[i]][attribs[j]].reward;	
 	}
-	return result;
+    }
+    return result;
 }
 
 function doQuery(url, success_callback, name, kwargs) {
@@ -160,9 +165,9 @@ function doQuery(url, success_callback, name, kwargs) {
     $.ajax(all_kwargs);
 }
 var queryResults = {}, 
-    queryRegister = [];
-    
-    
+queryRegister = [];
+
+
 function registerQuery(name, url, success_callback, kwargs) {
     queryRegister.push({'name':name,'url':url, 'callback':success_callback, 'kwargs':kwargs});
 }
@@ -219,26 +224,26 @@ function domStats(data) {
 }
 
 function editorStats(data) {
-	for(var id in data['query']['pages']) {
-		var author_counts = {};
-		if(!data['query']['pages'].hasOwnProperty) {
-			continue;
-		}
-		var editor_count = data['query']['pages'][id]['revisions'];
-		for(var i = 0; i < editor_count.length; i++) {
-			if(!author_counts[editor_count[i].user]) {
-				author_counts[editor_count[i].user] = 0;
-			}
-			author_counts[editor_count[i].user] += 1;
-		}
-		page_stats.author_counts = author_counts;
+    for(var id in data['query']['pages']) {
+	var author_counts = {};
+	if(!data['query']['pages'].hasOwnProperty) {
+	    continue;
 	}
+	var editor_count = data['query']['pages'][id]['revisions'];
+	for(var i = 0; i < editor_count.length; i++) {
+	    if(!author_counts[editor_count[i].user]) {
+		author_counts[editor_count[i].user] = 0;
+	    }
+	    author_counts[editor_count[i].user] += 1;
+	}
+	page_stats.author_counts = author_counts;
+    }
     page_stats.unique_authors = keys(page_stats.author_counts).length;
 }
 
 
 function inLinkStats(data) {
-                //TODO: if there are 500 backlinks, we need to make another query
+    //TODO: if there are 500 backlinks, we need to make another query
     page_stats['incoming_links'] = data['query']['backlinks'].length;
 }
 
@@ -324,7 +329,7 @@ function getAssessment(data) {
 }
 
 var score = {};
-      
+
 function ollKomplete(){
     domStats(queryResults['domStats']);	
     feedbackStats(queryResults['feedbackStats']);
@@ -342,7 +347,7 @@ function ollKomplete(){
     $('div.top').css('width', percent+'px');
     $('div.bottom').css('width', (100-percent)+'px');
     $('#overall_percent').text(percent+'%');
-   
+    
 }    
 
 
