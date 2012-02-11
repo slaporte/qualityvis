@@ -1,25 +1,25 @@
 /**
-* Article quality visualization mediawiki gadget
-*  for the San Francisco Mediawiki Hackathon, 2012
-*  for more information, see https://www.mediawiki.org/wiki/January_2012_San_Francisco_Hackathon
-* 
-* By: Ben Plowman, Mahmoud Hashemi, Sarah Nahm, and Stephen LaPorte
-* 
-* Copyright 2012
-* 
-* This program is free software: you can redistribute it and/or modify
-* it under the terms of the GNU General Public License as published by
-* the Free Software Foundation, either version 3 of the License, or
-* (at your option) any later version.
-* 
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-* 
-* You should have received a copy of the GNU General Public License
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Article quality visualization mediawiki gadget
+ *  for the San Francisco Mediawiki Hackathon, 2012
+ *  for more information, see https://www.mediawiki.org/wiki/January_2012_San_Francisco_Hackathon
+ *
+ * By: Ben Plowman, Mahmoud Hashemi, Sarah Nahm, and Stephen LaPorte
+ *
+ * Copyright 2012
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 
 // if this page is on a mediawiki site, change to testing to false:
 var testing = true;
@@ -29,9 +29,9 @@ var page_stats = {};
 var rewards = {};
 
 if(testing == true) {
-    var page_title = 'Charizard'; 
-    var revid = 471874316; 
-    var articleId = 24198906; 
+    var page_title = 'Charizard';
+    var revid = 471874316;
+    var articleId = 24198906;
 } else {
     var page_title = mw.config.get('wgTitle');
     var revid = mw.config.get('wgCurRevisionId');
@@ -48,37 +48,37 @@ function rangeStat(start, end, max_score) {
 }
 
 /*
-* Metrics for article quality
-*/
+ * Metrics for article quality
+ */
 var rewards = {
     'vetted': {
-	'unique_authors'	: binStat(20, 40, 100),
-	'paragraph_count'	: rangeStat(10, 30, 100)
-	},
+        'unique_authors'        : binStat(20, 40, 100),
+        'paragraph_count'       : rangeStat(10, 30, 100)
+    },
     // rewards['vetted']['wikitrust_score'] = binStat(.;
     // rewards.vetted.['visits_per_last_edit'] = ;
     // rewards.vetted.['flags_total'] = ;
     'structure': {
-	'ref_section'		: binStat(1, 1, 100),
-	'external_links_total'	: binStat(10, 20, 100)
-	},
+        'ref_section'           : binStat(1, 1, 100),
+        'external_links_total'  : binStat(10, 20, 100)
+    },
     // rewards.structure.intro_paragraph = ;
     // rewards.structure.sections_per_link = binStat(;
     'richness': {
-	'image_count'		: binStat(2, 4, 100),
-	'external_links_total'	: binStat(10, 20, 100)
-	},
+        'image_count'           : binStat(2, 4, 100),
+        'external_links_total'  : binStat(10, 20, 100)
+    },
     // rewards.richness.length = ;
     // rewards.richness.audio = ;
     // rewards.geodata = ;
     'integrated': {
-	'category_count'	: binStat(3, 5, 100),
-	'incoming_links'	: binStat(3, 50, 100),
-	'outgoing_links'	: binStat(3, 50, 100)
-	},
+        'category_count'        : binStat(3, 5, 100),
+        'incoming_links'        : binStat(3, 50, 100),
+        'outgoing_links'        : binStat(3, 50, 100)
+    },
     //rewards.integrated.read_more_section = ;
     'community': {
-	'unique_authors'	: binStat(20, 40, 100)
+        'unique_authors'        : binStat(20, 40, 100)
     },
     //rewards.community.assessment = ;
     //rewards.community.visits_per_day = ;
@@ -89,12 +89,12 @@ var rewards = {
     //rewards.community.complete = ;
     //rewards.community.wellwritten = ;
     'citations': {
-	'ref_count'             : binStat(5, 10, 100)
+        'ref_count'             : binStat(5, 10, 100)
     },
     //rewards.citations.reference_count_per_paragraph = ;
     //rewards.citations.citation_flag = ;
     'significance': {
-	
+
     }
     //rewards.significance.paragraph_per_web_results = {};
     //rewrads.significance.paragraph_per_news_results = {};
@@ -104,9 +104,9 @@ var rewards = {
 function keys(obj) {
     var ret = [];
     for(var k in obj) {
-	if obj.hasOwnProperty(k) {
-	    ret.push(k);
-	}
+        if obj.hasOwnProperty(k) {
+            ret.push(k);
+        }
     }
     return ret;
 }
@@ -117,16 +117,16 @@ function do_query(url, complete_callback, kwargs) {
     var all_kwargs = {
         url: url,
         dataType: 'jsonp',
-	timeout: 1000, // TODO: convert to setting. Necessary to detect jsonp error.
+        timeout: 1000, // TODO: convert to setting. Necessary to detect jsonp error.
         success: function(data) {
-	    complete_callback(data);
+            complete_callback(data);
         },
         error: function(jqXHR, textStatus, errorThrown) {
             console.log('jqXHR: ' + jqXHR + ', textStatus: ', + textStatus + ', errorThrown: ' + errorThrown);
-	    complete_callback(jqXHR, textStatus, errorThrown);
+            complete_callback(jqXHR, textStatus, errorThrown);
         }
     };
-    
+
     for (key in kwargs) {
         if(kwargs.hasOwnProperty(key)) {
             all_kwargs[key] = kwargs[key];
@@ -137,7 +137,7 @@ function do_query(url, complete_callback, kwargs) {
 
 var basic_query = function(url) {
     return function(callback) {
-	do_query(url, callback);
+        do_query(url, callback);
     };
 }
 
@@ -145,7 +145,7 @@ var yql_query = function(yql, format) {
     var kwargs = {data: {q: yql, format: format}};
 
     return function(callback) {
-	do_query('http://query.yahooapis.com/v1/public/yql', callback, kwargs);
+        do_query('http://query.yahooapis.com/v1/public/yql', callback, kwargs);
     }
 }
 
@@ -164,86 +164,86 @@ var make_evaluator = function() {
     self.inputs  = [];
 
     self.add_input = function(name, fetch, calculate) {
-	// name is mostly for error messages/debugging
-	// source is a callable that takes a callback
-	// calculator is a callable that takes data from source and returns results
-	inputs.push({'name':name, 'fetch':fetch, 'calculate':calculate});	
+        // name is mostly for error messages/debugging
+        // source is a callable that takes a callback
+        // calculator is a callable that takes data from source and returns results
+        inputs.push({'name':name, 'fetch':fetch, 'calculate':calculate});
     };
 
     var input_done = function(input, data, complete_callback) {
-	var all_results = [];
+        var all_results = [];
 
-	input.data = data;
-	for (var i = 0; i < inputs.length; ++i) {
-	    if (inputs[i].data)
-		all_results.push(inputs[i].data);
-	}
+        input.data = data;
+        for (var i = 0; i < inputs.length; ++i) {
+            if (inputs[i].data)
+                all_results.push(inputs[i].data);
+        }
 
-	if (all_results.length == inputs.length)
-	    complete_callback(all_results);
+        if (all_results.length == inputs.length)
+            complete_callback(all_results);
     };
 
     var done_processing = false;
     var process_inputs = function(callback) {
-	if (done_processing)
-	    return;
-	if (self.inputs.length == 0) {
-	    //done_processing = true;
-	    //callback(); // TODO, I guess. so tired.
-	}
-	for (var i = 0; i < inputs.length; ++i) {
-	    // TODO: try/except
-	    var save_callback = function() { $.extend(self.data, calculate(arguments)); 
-					     input_done(inputs[i], arguments, callback);
-					   };
-	    input.fetch(save_callback);
-	}
+        if (done_processing)
+            return;
+        if (self.inputs.length == 0) {
+            //done_processing = true;
+            //callback(); // TODO, I guess. so tired.
+        }
+        for (var i = 0; i < inputs.length; ++i) {
+            // TODO: try/except
+            var save_callback = function() { $.extend(self.data, calculate(arguments));
+                                             input_done(inputs[i], arguments, callback);
+                                           };
+            input.fetch(save_callback);
+        }
     };
 
     self.get_score = function() {
-	if (self.results) {
-	    return self.results;
-	} else {
-	    // next step. process inputs (callback to calculate). block?
-	}
+        if (self.results) {
+            return self.results;
+        } else {
+            // next step. process inputs (callback to calculate). block?
+        }
     };
 
     var calculate = (stats, rewards) {
-	var result = {},
+        var result = {},
         val = 0;
-	for(var area in rewards) {
-	    for(var attr in area) {
-		var r = rewards[area][attr], // reward structure for this area/attr combo
-	        s = stats[attr]; // score of the page for this attribute
-		if(r.type == 'bin') {
-		    if( s >= r.great ) {
-			val = r.reward;
-		    } else if ( s >= r.threshold ) {
-			val = r.reward * .7; // TODO: make tuneable?
-		    }
-		} else if (r.type == 'range') {
-		    var slope = r.reward / r.start;
-		    if( s < r.start) {
-			val = s * slope;
-		    } else if( s > r.threshold){
-			val = (r.reward - (s - r.threshold)) * slope;
-			val = Math.max(0, val);
-		    } else {
-			val = r.reward;	
-		    }
-		}
-		
-		
-		result[area]       = result[area] || {};
-		result[area].score = result[area].score + val || val;
-		result[area].max   = result[area].max + r.reward || r.reward;
+        for(var area in rewards) {
+            for(var attr in area) {
+                var r = rewards[area][attr], // reward structure for this area/attr combo
+                s = stats[attr]; // score of the page for this attribute
+                if(r.type == 'bin') {
+                    if( s >= r.great ) {
+                        val = r.reward;
+                    } else if ( s >= r.threshold ) {
+                        val = r.reward * .7; // TODO: make tuneable?
+                    }
+                } else if (r.type == 'range') {
+                    var slope = r.reward / r.start;
+                    if( s < r.start) {
+                        val = s * slope;
+                    } else if( s > r.threshold){
+                        val = (r.reward - (s - r.threshold)) * slope;
+                        val = Math.max(0, val);
+                    } else {
+                        val = r.reward;
+                    }
+                }
 
-		result.total       = result.total || {};
-		result.total.score = result.total.score + val || val;
-		result.total.max   = result.total.max + r.reward || r.reward;	
-	    }
-	}
-	return result;
+
+                result[area]       = result[area] || {};
+                result[area].score = result[area].score + val || val;
+                result[area].max   = result[area].max + r.reward || r.reward;
+
+                result.total       = result.total || {};
+                result.total.score = result.total.score + val || val;
+                result.total.max   = result.total.max + r.reward || r.reward;
+            }
+        }
+        return result;
     }
 
 
@@ -257,7 +257,7 @@ var ev = make_evaluator();
 ev.add_input('domStats', basic_query('http://en.wikipedia.org/w/api.php?action=parse&page=' + page_title + '&format=json'), domStats);
 ev.add_input('editorStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=' + page_title + '&rvprop=user&rvlimit=50&format=json'), editorStats);
 ev.add_input('inLinkStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&format=json&list=backlinks&bltitle=' + page_title + '&bllimit=500&blnamespace=0&callback=?'), inLinkStats);
-ev.add_input('feedbackStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&list=articlefeedback&afpageid=' + articleId + '&afuserrating=1&format=json&afanontoken=01234567890123456789012345678912', feedbackStats);
+ev.add_input('feedbackStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&list=articlefeedback&afpageid=' + articleId + '&afuserrating=1&format=json&afanontoken=01234567890123456789012345678912', feedbackStats));
 ev.add_input('searchStats', basic_query('http://ajax.googleapis.com/ajax/services/search/web?v=1.0&q=' + page_title), searchStats);
 ev.add_input('newsStats', basic_query('http://ajax.googleapis.com/ajax/services/search/news?v=1.0&q=' + page_title), newsStats);
 ev.add_input('wikitrustStats', yql_query('select * from html where url ="http://en.collaborativetrust.com/WikiTrust/RemoteAPI?method=quality&revid=' + revid + '"', 'json'), wikitrustStats);
@@ -266,7 +266,7 @@ ev.add_input('getAssessment', basic_query('http://en.wikipedia.org/w/api.php?act
 
 function domStats(data) {
     var wikitext = data['parse']['text']['*'],
-        ret      = {};
+    ret      = {};
 
     ret.ref_count = $('.reference', wikitext).length;
     ret.paragraph_count = $('.mw-content-ltr p').length;
@@ -289,21 +289,21 @@ function domStats(data) {
 function editorStats(data) {
     var ret = {};
     for(var id in data['query']['pages']) {
-	var author_counts = {};
-	if(!data['query']['pages'].hasOwnProperty) {
-	    continue;
-	}
-	var editor_count = data['query']['pages'][id]['revisions'];
-	for(var i = 0; i < editor_count.length; i++) {
-	    if(!author_counts[editor_count[i].user]) {
-		author_counts[editor_count[i].user] = 0;
-	    }
-	    author_counts[editor_count[i].user] += 1;
-	}
-	ret.author_counts = author_counts;
+        var author_counts = {};
+        if(!data['query']['pages'].hasOwnProperty) {
+            continue;
+        }
+        var editor_count = data['query']['pages'][id]['revisions'];
+        for(var i = 0; i < editor_count.length; i++) {
+            if(!author_counts[editor_count[i].user]) {
+                author_counts[editor_count[i].user] = 0;
+            }
+            author_counts[editor_count[i].user] += 1;
+        }
+        ret.author_counts = author_counts;
     }
     ret.unique_authors = keys(page_stats.author_counts).length;
-    
+
     return ret;
 }
 
@@ -405,16 +405,16 @@ function getAssessment(data) {
 }
 
 function ollKomplete(){
-    
+
     var score = calculate(page_stats, rewards);
     var ratio = (score.total.score+0.0)/score.total.max;
-    
+
     var percent = Math.round(ratio * 100);
     $('div.top').css('width', percent+'px');
     $('div.bottom').css('width', (100-percent)+'px');
     $('#overall_percent').text(percent+'%');
-    
-}    
+
+}
 
 
 $(document).ready(function() {
@@ -426,6 +426,6 @@ $(document).ready(function() {
     bar.append('<div><p class="bar_text">Overall quality: </p></div><div id="overall_graph"><div class="top"></div><div class="bottom"></div></div><div class="headline" id="overall_percent"></div>');
     bar.append('<div><p class="bar_text">Improve this score by adding: </p><p class="list"><p>...</p></div>');
 
-    
+
 
 });
