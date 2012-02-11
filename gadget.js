@@ -55,105 +55,75 @@ var rewards = {
 	'unique_authors'	: binStat(20, 40, 100),
 	'paragraph_count'	: rangeStat(10, 30, 100)
 	},
-// rewards['vetted']['wikitrust_score'] = binStat(.;
-// rewards.vetted.['visits_per_last_edit'] = ;
-// rewards.vetted.['flags_total'] = ;
+    // rewards['vetted']['wikitrust_score'] = binStat(.;
+    // rewards.vetted.['visits_per_last_edit'] = ;
+    // rewards.vetted.['flags_total'] = ;
     'structure': {
 	'ref_section'		: binStat(1, 1, 100),
 	'external_links_total'	: binStat(10, 20, 100)
 	},
-// rewards.structure.intro_paragraph = ;
-// rewards.structure.sections_per_link = binStat(;
+    // rewards.structure.intro_paragraph = ;
+    // rewards.structure.sections_per_link = binStat(;
     'richness': {
 	'image_count'		: binStat(2, 4, 100),
 	'external_links_total'	: binStat(10, 20, 100)
 	},
-// rewards.richness.length = ;
-// rewards.richness.audio = ;
-// rewards.geodata = ;
+    // rewards.richness.length = ;
+    // rewards.richness.audio = ;
+    // rewards.geodata = ;
     'integrated': {
 	'category_count'	: binStat(3, 5, 100),
 	'incoming_links'	: binStat(3, 50, 100),
 	'outgoing_links'	: binStat(3, 50, 100)
 	},
-//rewards.integrated.read_more_section = ;
+    //rewards.integrated.read_more_section = ;
     'community': {
 	'unique_authors'	: binStat(20, 40, 100)
     },
-//rewards.community.assessment = ;
-//rewards.community.visits_per_day = ;
-//rewards.community.visits_per_last_edit = ;
-//rewards.community.flags_total = ;
-//rewards.community.trustworthy = ;
-//rewards.community.objective = ;
-//rewards.community.complete = ;
-//rewards.community.wellwritten = ;
+    //rewards.community.assessment = ;
+    //rewards.community.visits_per_day = ;
+    //rewards.community.visits_per_last_edit = ;
+    //rewards.community.flags_total = ;
+    //rewards.community.trustworthy = ;
+    //rewards.community.objective = ;
+    //rewards.community.complete = ;
+    //rewards.community.wellwritten = ;
     'citations': {
 	'ref_count'             : binStat(5, 10, 100)
     },
-//rewards.citations.reference_count_per_paragraph = ;
-//rewards.citations.citation_flag = ;
+    //rewards.citations.reference_count_per_paragraph = ;
+    //rewards.citations.citation_flag = ;
     'significance': {
 	
     }
-//rewards.significance.paragraph_per_web_results = {};
-//rewrads.significance.paragraph_per_news_results = {};
-//rewards.significance = binStat(;
+    //rewards.significance.paragraph_per_web_results = {};
+    //rewrads.significance.paragraph_per_news_results = {};
+    //rewards.significance = binStat(;
 }
 
-function calculate(stats, rewards) {
-    var area = keys(rewards), 
-    result = {},
-    val = 0;
-    for(var i = 0; i < area.length; i++) {
-	var attribs = keys(rewards[area[i]]);
-	for(var j = 0; j < attribs.length; j++) {
-	    if(rewards[area[i]][attribs[j]].type == 'bin') {
-		if(stats[attribs[j]] >= rewards[area[i]][attribs[j]].great) {
-		    val = rewards[area[i]][attribs[j]].reward;
-		} else if(stats[attribs[j]] >= rewards[area[i]][attribs[j]].threshold) {
-		    val = rewards[area[i]][attribs[j]].reward * .7; 
-		}
-	    } else if (rewards[area[i]][attribs[j]].type == 'range') {
-		var slope = rewards[area[i]][attribs[j]].reward / rewards[area[i]][attribs[j]].start;
-		if(stats[attribs[j]] < rewards[area[i]][attribs[j]].start){
-		    val = (stats[attribs[j]]) * slope;
-		} else if(stats[attribs[j]] > rewards[area[i]][attribs[j]].threshold){
-		    val = (rewards[area[i]][attribs[j]].reward - (stats[attribs[j]] - rewards[area[i]][attribs[j]].threshold)) * slope;
-		    val = Math.max(0, val);
-		} else {
-		    val = rewards[area[i]][attribs[j]].reward;	
-		}
-	    }
-	    
-	    
-	    result[area[i]] = result[area[i]] || {};
-	    result[area[i]].score = result[area[i]].score + val || val;
-	    result[area[i]].max = result[area[i]].max + rewards[area[i]][attribs[j]].reward || rewards[area[i]][attribs[j]].reward;
-
-	    result['total'] = result['total'] || {};
-	    result['total'].score = result['total'].score + val || val;
-	    result['total'].max = result['total'].max + rewards[area[i]][attribs[j]].reward || rewards[area[i]][attribs[j]].reward;	
+function keys(obj) {
+    var ret = [];
+    for(var k in obj) {
+	if obj.hasOwnProperty(k) {
+	    ret.push(k);
 	}
     }
-    return result;
+    return ret;
 }
 
-function doQuery(url, success_callback, name, kwargs) {
+
+function do_query(url, complete_callback, kwargs) {
     name = name || url;
     var all_kwargs = {
         url: url,
         dataType: 'jsonp',
+	timeout: 1000, // TODO: convert to setting. Necessary to detect jsonp error.
         success: function(data) {
-            queryResults[name] = data;
-            success_callback(data);
+	    complete_callback(data);
         },
         error: function(jqXHR, textStatus, errorThrown) {
-            queryResults[name] = false;
             console.log('jqXHR: ' + jqXHR + ', textStatus: ', + textStatus + ', errorThrown: ' + errorThrown);
-        },
-        complete: function() {
-            $(document).trigger(name+'-complete');
+	    complete_callback(jqXHR, textStatus, errorThrown);
         }
     };
     
@@ -164,66 +134,160 @@ function doQuery(url, success_callback, name, kwargs) {
     }
     $.ajax(all_kwargs);
 }
-var queryResults = {}, 
-queryRegister = [];
 
-
-function registerQuery(name, url, success_callback, kwargs) {
-    queryRegister.push({'name':name,'url':url, 'callback':success_callback, 'kwargs':kwargs});
+var basic_query = function(url) {
+    return function(callback) {
+	do_query(url, callback);
+    };
 }
 
-var queriesComplete = false;
-function doAllQueries(success_callback) {
-    if (queriesComplete) {
-        return;
-    }
-    for(var i = 0; i < queryRegister.length; i++) {
-        var name   = queryRegister[i].name,
-            url    = queryRegister[i].url,
-            kwargs = queryRegister[i].kwargs;
-        $(document).bind(name+'-complete', function() {
-            for(var j=0; j < queryRegister.length; j++) {
-                if(! queryResults.hasOwnProperty(queryRegister[j].name)) {
-                    return false;
-                }
-            }
-            queriesComplete = true;
-            success_callback();
-        });
-        doQuery(url, function(){return;}, name, kwargs);
+var yql_query = function(yql, format) {
+    var kwargs = {data: {q: yql, format: format}};
+
+    return function(callback) {
+	do_query('http://query.yahooapis.com/v1/public/yql', callback, kwargs);
     }
 }
 
-registerQuery('domStats', 'http://en.wikipedia.org/w/api.php?action=parse&page=' + page_title + '&format=json&callback=?');
-registerQuery('editorStats', 'http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=' + page_title + '&rvprop=user&rvlimit=50&format=json&callback=?');
-registerQuery('inLinkStats', 'http://en.wikipedia.org/w/api.php?action=query&format=json&list=backlinks&bltitle=' + page_title + '&bllimit=500&blnamespace=0&callback=?');
-registerQuery('feedbackStats', 'http://en.wikipedia.org/w/api.php?action=query&list=articlefeedback&afpageid=' + articleId + '&afuserrating=1&format=json&callback=?&afanontoken=01234567890123456789012345678912');
-registerQuery('searchStats', 'http://ajax.googleapis.com/ajax/services/search/web?v=1.0&q=' + page_title);
-registerQuery('newsStats', 'http://ajax.googleapis.com/ajax/services/search/news?v=1.0&q=' + page_title);
-registerQuery('wikitrustStats', 'http://query.yahooapis.com/v1/public/yql', null, {data : {q : 'select * from html where url ="http://en.collaborativetrust.com/WikiTrust/RemoteAPI?method=quality&revid=' + revid + '"',format : 'json'}});
-registerQuery('grokseStats', 'http://query.yahooapis.com/v1/public/yql', null, {data : {q : 'select * from json where url ="http://stats.grok.se/json/en/201201/' + page_title + '"',format : 'json'}});
-registerQuery('getAssessment', 'http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + page_title + '&rvprop=content&redirects=true&format=json&callback=?');
+
+// One limitation on this model (easily refactored): calculators can't read from data
+// they can only write to it. Mostly this is because we don't know what will or won't
+// be present.
+
+// TODO: refactor to allow inputs without fetches. pass in DOM/global-level input data
+var make_evaluator = function() {
+
+    var self     = {};
+
+    self.data    = {};
+    self.results = null;
+    self.inputs  = [];
+
+    self.add_input = function(name, fetch, calculate) {
+	// name is mostly for error messages/debugging
+	// source is a callable that takes a callback
+	// calculator is a callable that takes data from source and returns results
+	inputs.push({'name':name, 'fetch':fetch, 'calculate':calculate});	
+    };
+
+    var input_done = function(input, data, complete_callback) {
+	var all_results = [];
+
+	input.data = data;
+	for (var i = 0; i < inputs.length; ++i) {
+	    if (inputs[i].data)
+		all_results.push(inputs[i].data);
+	}
+
+	if (all_results.length == inputs.length)
+	    complete_callback(all_results);
+    };
+
+    var done_processing = false;
+    var process_inputs = function(callback) {
+	if (done_processing)
+	    return;
+	if (self.inputs.length == 0) {
+	    //done_processing = true;
+	    //callback(); // TODO, I guess. so tired.
+	}
+	for (var i = 0; i < inputs.length; ++i) {
+	    // TODO: try/except
+	    var save_callback = function() { $.extend(self.data, calculate(arguments)); 
+					     input_done(inputs[i], arguments, callback);
+					   };
+	    input.fetch(save_callback);
+	}
+    };
+
+    self.get_score = function() {
+	if (self.results) {
+	    return self.results;
+	} else {
+	    // next step. process inputs (callback to calculate). block?
+	}
+    };
+
+    var calculate = (stats, rewards) {
+	var result = {},
+        val = 0;
+	for(var area in rewards) {
+	    for(var attr in area) {
+		var r = rewards[area][attr], // reward structure for this area/attr combo
+	        s = stats[attr]; // score of the page for this attribute
+		if(r.type == 'bin') {
+		    if( s >= r.great ) {
+			val = r.reward;
+		    } else if ( s >= r.threshold ) {
+			val = r.reward * .7; // TODO: make tuneable?
+		    }
+		} else if (r.type == 'range') {
+		    var slope = r.reward / r.start;
+		    if( s < r.start) {
+			val = s * slope;
+		    } else if( s > r.threshold){
+			val = (r.reward - (s - r.threshold)) * slope;
+			val = Math.max(0, val);
+		    } else {
+			val = r.reward;	
+		    }
+		}
+		
+		
+		result[area]       = result[area] || {};
+		result[area].score = result[area].score + val || val;
+		result[area].max   = result[area].max + r.reward || r.reward;
+
+		result.total       = result.total || {};
+		result.total.score = result.total.score + val || val;
+		result.total.max   = result.total.max + r.reward || r.reward;	
+	    }
+	}
+	return result;
+    }
+
+
+
+    return self;
+}
+
+var ev = make_evaluator();
+
+// TODO these inputs should be callable objects. add a 'source' attribute to a function and add that as an input to the evaluator.
+ev.add_input('domStats', basic_query('http://en.wikipedia.org/w/api.php?action=parse&page=' + page_title + '&format=json'), domStats);
+ev.add_input('editorStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=' + page_title + '&rvprop=user&rvlimit=50&format=json'), editorStats);
+ev.add_input('inLinkStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&format=json&list=backlinks&bltitle=' + page_title + '&bllimit=500&blnamespace=0&callback=?'), inLinkStats);
+ev.add_input('feedbackStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&list=articlefeedback&afpageid=' + articleId + '&afuserrating=1&format=json&afanontoken=01234567890123456789012345678912', feedbackStats);
+ev.add_input('searchStats', basic_query('http://ajax.googleapis.com/ajax/services/search/web?v=1.0&q=' + page_title), searchStats);
+ev.add_input('newsStats', basic_query('http://ajax.googleapis.com/ajax/services/search/news?v=1.0&q=' + page_title), newsStats);
+ev.add_input('wikitrustStats', yql_query('select * from html where url ="http://en.collaborativetrust.com/WikiTrust/RemoteAPI?method=quality&revid=' + revid + '"', 'json'), wikitrustStats);
+ev.add_input('grokseStats', yql_query('select * from json where url ="http://stats.grok.se/json/en/201201/' + page_title + '"', 'json'), grokseStats);
+ev.add_input('getAssessment', basic_query('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + page_title + '&rvprop=content&redirects=true&format=json'), getAssessment);
 
 function domStats(data) {
-    var wikitext = data['parse']['text']['*'];
-    page_stats['ref_count'] = $('.reference', wikitext).length;
-    page_stats['paragraph_count'] = $('.mw-content-ltr p').length;
-    page_stats['image_count'] = $('img', wikitext).length;
-    page_stats['category_count'] = data['parse']['categories'].length;
-    page_stats['reference_section_count'] = $('#References', wikitext).length;
-    page_stats['external_links_section_count'] = $('#External_links', wikitext).length;
-    page_stats['external_links_in_section'] = $('#External_links', wikitext).parent().nextAll('ul').children().length;
-    page_stats['external_links_total'] = data['parse']['externallinks'].length;
-    page_stats['internal_links'] = data['parse']['links'].length;
-    page_stats['intro_p_count'] =  $('.mw-content-ltr p', wikitext).length;
+    var wikitext = data['parse']['text']['*'],
+        ret      = {};
 
-    page_stats['ref_needed_count'] = $('span:contains("citation needed")', wikitext).length;
-    page_stats['pov_statement_count'] = $('span:contains("neutrality")', wikitext).length;
-    page_stats['pov_statement_count'] = $('span:contains("neutrality")', wikitext).length;
+    ret.ref_count = $('.reference', wikitext).length;
+    ret.paragraph_count = $('.mw-content-ltr p').length;
+    ret.image_count = $('img', wikitext).length;
+    ret.category_count = data['parse']['categories'].length;
+    ret.reference_section_count = $('#References', wikitext).length;
+    ret.external_links_section_count = $('#External_links', wikitext).length;
+    ret.external_links_in_section = $('#External_links', wikitext).parent().nextAll('ul').children().length;
+    ret.external_links_total = data['parse']['externallinks'].length;
+    ret.internal_links = data['parse']['links'].length;
+    ret.intro_p_count =  $('.mw-content-ltr p', wikitext).length;
 
+    ret.ref_needed_count = $('span:contains("citation needed")', wikitext).length;
+    ret.pov_statement_count = $('span:contains("neutrality")', wikitext).length;
+    ret.pov_statement_count = $('span:contains("neutrality")', wikitext).length;
+
+    return ret;
 }
 
 function editorStats(data) {
+    var ret = {};
     for(var id in data['query']['pages']) {
 	var author_counts = {};
 	if(!data['query']['pages'].hasOwnProperty) {
@@ -236,58 +300,69 @@ function editorStats(data) {
 	    }
 	    author_counts[editor_count[i].user] += 1;
 	}
-	page_stats.author_counts = author_counts;
+	ret.author_counts = author_counts;
     }
-    page_stats.unique_authors = keys(page_stats.author_counts).length;
+    ret.unique_authors = keys(page_stats.author_counts).length;
+    
+    return ret;
 }
 
 
 function inLinkStats(data) {
     //TODO: if there are 500 backlinks, we need to make another query
-    page_stats['incoming_links'] = data['query']['backlinks'].length;
+    var ret = {}
+    ret.incoming_links = data['query']['backlinks'].length;
+    return ret;
 }
 
 function feedbackStats(data) {
+    var ret = {};
+
     var ratings = data['query']['articlefeedback'][0]['ratings'];
     var trustworthy = ratings[0];
     var objective = ratings[1];
     var complete = ratings[2];
     var wellwritten = ratings[3];
 
-    page_stats['fbTrustworthy'] = trustworthy['total'] / trustworthy['count'];
-    page_stats['fbObjective'] = objective['total'] / objective['count'];
-    page_stats['fbComplete'] = complete['total'] / complete['count'];
-    page_stats['fbWellwritten'] = wellwritten['total'] / wellwritten['count'];
+    ret.fbTrustworthy = trustworthy['total'] / trustworthy['count'];
+    ret.fbObjective = objective['total'] / objective['count'];
+    ret.fbComplete = complete['total'] / complete['count'];
+    ret.fbWellwritten = wellwritten['total'] / wellwritten['count'];
+
+    return ret;
 }
 
 function searchStats(data) {
-    page_stats['google_search_results'] = parseInt(data['responseData']['cursor']['estimatedResultCount']);
+    var ret = {};
+    ret.google_search_results = parseInt(data['responseData']['cursor']['estimatedResultCount']);
+    return ret;
 }
 
 function newsStats(data) {
-    page_stats['google_news_results'] = parseInt(data['responseData']['cursor']['estimatedResultCount']);
-}
-
-function keys(obj) {
-    return $.map(obj, function(value, key) {
-        return key;
-    })  
+    var ret = {};
+    ret.google_news_results = parseInt(data['responseData']['cursor']['estimatedResultCount'], 10);
+    return ret;
 }
 
 function wikitrustStats(data) {
-    page_stats['wikitrust'] = parseFloat(data.query.results.body.p);
+    var ret = {};
+    ret.wikitrust = parseFloat(data.query.results.body.p);
+    return ret;
 }
 
 function grokseStats(data) {
-    page_stats['pageVisits'] = data.query.results.json;
+    var ret = {};
+    ret.pageVisits = data.query.results.json;
+    return ret;
 }
 
 function getAssessment(data) {
+    var ret = {};
     for(var id in data['query']['pages']) {
-        if(!data['query']['pages'].hasOwnProperty) {
+        if(!data.query.hasOwnProperty('pages')) { // TODO: fixed now, but what does this even do?
             continue;
         }
-        text = (data.query.pages[id].revisions['0']['*']);
+        var text = (data.query.pages[id].revisions['0']['*']);
         /* From the 'metadata' gadget
          * @author Outriggr - created the script and used to maintain it
          * @author Pyrospirit - currently maintains and updates the script
@@ -324,23 +399,14 @@ function getAssessment(data) {
             rating = 'cur';
         else if (text.match(/\|\s*class\s*=\s*future/i))
             rating = 'future';
-        page_stats['assessment'] = rating;
+        ret.assessment = rating; // TODO: doesn't this belong outside the loop?
     }
+    return ret;
 }
 
-var score = {};
-
 function ollKomplete(){
-    domStats(queryResults['domStats']);	
-    feedbackStats(queryResults['feedbackStats']);
-    editorStats(queryResults['editorStats']);	
-    inLinkStats(queryResults['inLinkStats']);	
-    searchStats(queryResults['searchStats']);	
-    newsStats(queryResults['newsStats']);
-    wikitrustStats(queryResults['wikitrustStats']);
-    grokseStats(queryResults['grokseStats']);
-    getAssessment(queryResults['getAssessment']);
-    score = calculate(page_stats, rewards);
+    
+    var score = calculate(page_stats, rewards);
     var ratio = (score.total.score+0.0)/score.total.max;
     
     var percent = Math.round(ratio * 100);
@@ -353,13 +419,13 @@ function ollKomplete(){
 
 $(document).ready(function() {
 
-    doAllQueries(ollKomplete);
-
     $("#bodyContent").prepend("<div id='quality'><div class='quality_bar'></div></div>");
     var box = $('#quality');
     var bar = $('.quality_bar');
 
     bar.append('<div><p class="bar_text">Overall quality: </p></div><div id="overall_graph"><div class="top"></div><div class="bottom"></div></div><div class="headline" id="overall_percent"></div>');
-    bar.append('<div><p class="bar_text">Improve this score by adding: </p><p class="list"><p>...</p></div>')
+    bar.append('<div><p class="bar_text">Improve this score by adding: </p><p class="list"><p>...</p></div>');
+
+    
 
 });
