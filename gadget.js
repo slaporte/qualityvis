@@ -25,9 +25,6 @@
 var testing = true;
 
 
-var page_stats = {};
-var rewards = {};
-
 if(testing == true) {
     var page_title = 'Charizard';
     var revid = 471874316;
@@ -104,7 +101,7 @@ var rewards = {
 function keys(obj) {
     var ret = [];
     for(var k in obj) {
-        if obj.hasOwnProperty(k) {
+        if (obj.hasOwnProperty(k)) {
             ret.push(k);
         }
     }
@@ -117,12 +114,11 @@ function do_query(url, complete_callback, kwargs) {
     var all_kwargs = {
         url: url,
         dataType: 'jsonp',
-        timeout: 1000, // TODO: convert to setting. Necessary to detect jsonp error.
+        timeout: 3000, // TODO: convert to setting. Necessary to detect jsonp error.
         success: function(data) {
             complete_callback(data);
         },
         error: function(jqXHR, textStatus, errorThrown) {
-            console.log('jqXHR: ' + jqXHR + ', textStatus: ', + textStatus + ', errorThrown: ' + errorThrown);
             complete_callback(jqXHR, textStatus, errorThrown);
         }
     };
@@ -155,84 +151,95 @@ var yql_query = function(yql, format) {
 // be present.
 
 // TODO: refactor to allow inputs without fetches. pass in DOM/global-level input data
-var make_evaluator = function() {
+var make_evaluator = function(rewards) {
 
     var self     = {};
+
+    self.rewards = rewards;
 
     self.data    = {};
     self.results = null;
     self.inputs  = [];
-
+    var query_results = []
     self.add_input = function(name, fetch, calculate) {
         // name is mostly for error messages/debugging
         // source is a callable that takes a callback
         // calculator is a callable that takes data from source and returns results
-        inputs.push({'name':name, 'fetch':fetch, 'calculate':calculate});
-    };
+	var inputs = self.inputs,
+	input  = {'name':name, 'fetch':fetch, 'calculate':calculate};
+	
+        inputs.push(input);
 
-    var input_done = function(input, data, complete_callback) {
-        var all_results = [];
+        // TODO: try/except
+        var save_callback = function() { 
+	    try {
+	        $.extend(self.data, input.calculate(arguments[0]));
+                input_done(input, arguments[0], calc_scores);
+            } catch (err) {
+		throw err;
+	    }
+	};
+        input.fetch(save_callback);
+    }
+
+    var callbacks = [];
+    var complete_callback = function(page_data, rewards) {
+	self.results = calc_scores(page_data, rewards);
+
+	for(var i=0; i < callbacks.length; ++i) {
+	    callbacks[i](self.results, rewards);
+	}
+    }
+
+    self.on_complete = function(callback) {
+	callbacks.push(callback);
+	// if the queries are complete, we need to manually trigger callback
+	if (query_results.length == self.inputs.length && self.results)
+	    callback(self.results, self.rewards);
+    }
+
+    var input_done = function(input, data) {
+	var tmp_results = [];
+	var inputs = self.inputs;
 
         input.data = data;
         for (var i = 0; i < inputs.length; ++i) {
-            if (inputs[i].data)
-                all_results.push(inputs[i].data);
+	    if (inputs[i].data)
+                tmp_results.push(inputs[i].data);
+	    // TODO add request failure handling
         }
 
-        if (all_results.length == inputs.length)
-            complete_callback(all_results);
+	if (tmp_results.length == inputs.length) {
+	    query_results = tmp_results;
+	    complete_callback(self.data, self.rewards);
+	}
     };
 
-    var done_processing = false;
-    var process_inputs = function(callback) {
-        if (done_processing)
-            return;
-        if (self.inputs.length == 0) {
-            //done_processing = true;
-            //callback(); // TODO, I guess. so tired.
-        }
-        for (var i = 0; i < inputs.length; ++i) {
-            // TODO: try/except
-            var save_callback = function() { $.extend(self.data, calculate(arguments));
-                                             input_done(inputs[i], arguments, callback);
-                                           };
-            input.fetch(save_callback);
-        }
-    };
-
-    self.get_score = function() {
-        if (self.results) {
-            return self.results;
-        } else {
-            // next step. process inputs (callback to calculate). block?
-        }
-    };
-
-    var calculate = (stats, rewards) {
+    var calc_scores = function(stats, rewards) {
         var result = {},
         val = 0;
         for(var area in rewards) {
-            for(var attr in area) {
+	    for(var attr in rewards[area]) {
                 var r = rewards[area][attr], // reward structure for this area/attr combo
-                s = stats[attr]; // score of the page for this attribute
+                    s = stats[attr]; // score of the page for this attribute
+
                 if(r.type == 'bin') {
-                    if( s >= r.great ) {
+		    if( s >= r.great ) {
                         val = r.reward;
-                    } else if ( s >= r.threshold ) {
+		    } else if ( s >= r.threshold ) {
                         val = r.reward * .7; // TODO: make tuneable?
-                    }
+		    }
                 } else if (r.type == 'range') {
-                    var slope = r.reward / r.start;
-                    if( s < r.start) {
+		    var slope = r.reward / r.start;
+		    if( s < r.start) {
                         val = s * slope;
-                    } else if( s > r.threshold){
+		    } else if( s > r.threshold){
                         val = (r.reward - (s - r.threshold)) * slope;
                         val = Math.max(0, val);
-                    } else {
+		    } else {
                         val = r.reward;
-                    }
+		    }
                 }
-
 
                 result[area]       = result[area] || {};
                 result[area].score = result[area].score + val || val;
@@ -241,28 +248,13 @@ var make_evaluator = function() {
                 result.total       = result.total || {};
                 result.total.score = result.total.score + val || val;
                 result.total.max   = result.total.max + r.reward || r.reward;
-            }
+	    }
         }
         return result;
-    }
-
-
+    };
 
     return self;
 }
-
-var ev = make_evaluator();
-
-// TODO these inputs should be callable objects. add a 'source' attribute to a function and add that as an input to the evaluator.
-ev.add_input('domStats', basic_query('http://en.wikipedia.org/w/api.php?action=parse&page=' + page_title + '&format=json'), domStats);
-ev.add_input('editorStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=' + page_title + '&rvprop=user&rvlimit=50&format=json'), editorStats);
-ev.add_input('inLinkStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&format=json&list=backlinks&bltitle=' + page_title + '&bllimit=500&blnamespace=0&callback=?'), inLinkStats);
-ev.add_input('feedbackStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&list=articlefeedback&afpageid=' + articleId + '&afuserrating=1&format=json&afanontoken=01234567890123456789012345678912', feedbackStats));
-ev.add_input('searchStats', basic_query('http://ajax.googleapis.com/ajax/services/search/web?v=1.0&q=' + page_title), searchStats);
-ev.add_input('newsStats', basic_query('http://ajax.googleapis.com/ajax/services/search/news?v=1.0&q=' + page_title), newsStats);
-ev.add_input('wikitrustStats', yql_query('select * from html where url ="http://en.collaborativetrust.com/WikiTrust/RemoteAPI?method=quality&revid=' + revid + '"', 'json'), wikitrustStats);
-ev.add_input('grokseStats', yql_query('select * from json where url ="http://stats.grok.se/json/en/201201/' + page_title + '"', 'json'), grokseStats);
-ev.add_input('getAssessment', basic_query('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + page_title + '&rvprop=content&redirects=true&format=json'), getAssessment);
 
 function domStats(data) {
     var wikitext = data['parse']['text']['*'],
@@ -291,18 +283,18 @@ function editorStats(data) {
     for(var id in data['query']['pages']) {
         var author_counts = {};
         if(!data['query']['pages'].hasOwnProperty) {
-            continue;
+	    continue;
         }
         var editor_count = data['query']['pages'][id]['revisions'];
         for(var i = 0; i < editor_count.length; i++) {
-            if(!author_counts[editor_count[i].user]) {
+	    if(!author_counts[editor_count[i].user]) {
                 author_counts[editor_count[i].user] = 0;
-            }
-            author_counts[editor_count[i].user] += 1;
+	    }
+	    author_counts[editor_count[i].user] += 1;
         }
         ret.author_counts = author_counts;
     }
-    ret.unique_authors = keys(page_stats.author_counts).length;
+    ret.unique_authors = keys(ret.author_counts).length;
 
     return ret;
 }
@@ -360,8 +352,13 @@ function getAssessment(data) {
     var ret = {};
     for(var id in data['query']['pages']) {
         if(!data.query.hasOwnProperty('pages')) { // TODO: fixed now, but what does this even do?
-            continue;
-        }
+	    continue;
+function printPageStats() {
+    $('#testingHeading').append(page_title);
+    for(var stat in page_stats) {
+Uncaught ReferenceError: page_stats is not defined
+      $('#info').append('<li>' + stat + ': ' + page_stats[stat] + '</li>')
+    }        }
         var text = (data.query.pages[id].revisions['0']['*']);
         /* From the 'metadata' gadget
          * @author Outriggr - created the script and used to maintain it
@@ -369,44 +366,43 @@ function getAssessment(data) {
          */
         var rating = 'none';
         if (text.match(/\|\s*(class|currentstatus)\s*=\s*fa\b/i))
-            rating = 'fa';
+	    rating = 'fa';
         else if (text.match(/\|\s*(class|currentstatus)\s*=\s*fl\b/i))
-            rating = 'fl';
+	    rating = 'fl';
         else if (text.match(/\|\s*class\s*=\s*a\b/i)) {
-            if (text.match(/\|\s*class\s*=\s*ga\b|\|\s*currentstatus\s*=\s*(ffa\/)?ga\b/i))
+	    if (text.match(/\|\s*class\s*=\s*ga\b|\|\s*currentstatus\s*=\s*(ffa\/)?ga\b/i))
                 rating = 'a/ga'; // A-class articles that are also GA's
-            else rating = 'a';
+	    else rating = 'a';
         } else if (text.match(/\|\s*class\s*=\s*ga\b|\|\s*currentstatus\s*=\s*(ffa\/)?ga\b|\{\{\s*ga\s*\|/i)
                    && !text.match(/\|\s*currentstatus\s*=\s*dga\b/i))
-            rating = 'ga';
+	    rating = 'ga';
         else if (text.match(/\|\s*class\s*=\s*b\b/i))
-            rating = 'b';
+	    rating = 'b';
         else if (text.match(/\|\s*class\s*=\s*bplus\b/i))
-            rating = 'bplus'; // used by WP Math
+	    rating = 'bplus'; // used by WP Math
         else if (text.match(/\|\s*class\s*=\s*c\b/i))
-            rating = 'c';
+	    rating = 'c';
         else if (text.match(/\|\s*class\s*=\s*start/i))
-            rating = 'start';
+	    rating = 'start';
         else if (text.match(/\|\s*class\s*=\s*stub/i))
-            rating = 'stub';
+	    rating = 'stub';
         else if (text.match(/\|\s*class\s*=\s*list/i))
-            rating = 'list';
+	    rating = 'list';
         else if (text.match(/\|\s*class\s*=\s*sl/i))
-            rating = 'sl'; // used by WP Plants
+	    rating = 'sl'; // used by WP Plants
         else if (text.match(/\|\s*class\s*=\s*(dab|disambig)/i))
-            rating = 'dab';
+	    rating = 'dab';
         else if (text.match(/\|\s*class\s*=\s*cur(rent)?/i))
-            rating = 'cur';
+	    rating = 'cur';
         else if (text.match(/\|\s*class\s*=\s*future/i))
-            rating = 'future';
+	    rating = 'future';
         ret.assessment = rating; // TODO: doesn't this belong outside the loop?
     }
     return ret;
 }
 
-function ollKomplete(){
-
-    var score = calculate(page_stats, rewards);
+function render(score){
+    
     var ratio = (score.total.score+0.0)/score.total.max;
 
     var percent = Math.round(ratio * 100);
@@ -426,6 +422,30 @@ $(document).ready(function() {
     bar.append('<div><p class="bar_text">Overall quality: </p></div><div id="overall_graph"><div class="top"></div><div class="bottom"></div></div><div class="headline" id="overall_percent"></div>');
     bar.append('<div><p class="bar_text">Improve this score by adding: </p><p class="list"><p>...</p></div>');
 
+    var ev = make_evaluator(rewards);
 
+    // TODO these inputs should be callable objects. add a 'source' attribute to a function and add that as an input to the evaluator.
+    ev.add_input('domStats', basic_query('http://en.wikipedia.org/w/api.php?action=parse&page=' + page_title + '&format=json'), domStats);
+    ev.add_input('editorStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=' + page_title + '&rvprop=user&rvlimit=50&format=json'), editorStats);
+    ev.add_input('inLinkStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&format=json&list=backlinks&bltitle=' + page_title + '&bllimit=500&blnamespace=0&callback=?'), inLinkStats);
+    ev.add_input('feedbackStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&list=articlefeedback&afpageid=' + articleId + '&afuserrating=1&format=json&afanontoken=01234567890123456789012345678912'), feedbackStats);
+    ev.add_input('searchStats', basic_query('http://ajax.googleapis.com/ajax/services/search/web?v=1.0&q=' + page_title), searchStats);
+    ev.add_input('newsStats', basic_query('http://ajax.googleapis.com/ajax/services/search/news?v=1.0&q=' + page_title), newsStats);
+    ev.add_input('wikitrustStats', yql_query('select * from html where url ="http://en.collaborativetrust.com/WikiTrust/RemoteAPI?method=quality&revid=' + revid + '"', 'json'), wikitrustStats);
+    ev.add_input('grokseStats', yql_query('select * from json where url ="http://stats.grok.se/json/en/201201/' + page_title + '"', 'json'), grokseStats);
+    ev.add_input('getAssessment', basic_query('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + page_title + '&rvprop=content&redirects=true&format=json'), getAssessment);
 
+    ev.on_complete(render);
+
+    var printPageStats = function() {
+	$('#testingHeading').append(page_title);
+	for(var stat in ev.data) {
+	    $('#info').append('<li>' + stat + ': ' + ev.data[stat] + '</li>')
+	}
+
+	for(var area in ev.results) {
+	    $('#results').append('<li>' + area + ': ' + ev.results[area].score + '/' + ev.results[area].max+'</li>')
+	}
+    }
+    ev.on_complete(printPageStats);
 });
