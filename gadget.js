@@ -241,7 +241,7 @@ var make_evaluator = function(rewards) {
 		    if( s < r.start) {
                         val = s * slope;
 		    } else if( s > r.threshold){
-                        val = (r.reward - (s - r.threshold)) * slope;
+                        val = r.reward - ((s - r.threshold) * slope);
                         val = Math.max(0, val);
 		    } else {
                         val = r.reward;
