@@ -419,7 +419,7 @@ function render(score){
 
 }
 
-
+var ev = null;
 $(document).ready(function() {
 
     $("#bodyContent").prepend("<div id='quality'><div class='quality_bar'></div></div>");
@@ -429,7 +429,7 @@ $(document).ready(function() {
     bar.append('<div><p class="bar_text">Overall quality: </p></div><div id="overall_graph"><div class="top"></div><div class="bottom"></div></div><div class="headline" id="overall_percent"></div>');
     bar.append('<div><p class="bar_text">Improve this score by adding: </p><p class="list"><p>...</p></div>');
 
-    var ev = make_evaluator(rewards);
+    ev = make_evaluator(rewards);
 
     // TODO these inputs should be callable objects. add a 'source' attribute to a function and add that as an input to the evaluator.
     ev.add_input('domStats', basic_query('http://en.wikipedia.org/w/api.php?action=parse&page=' + page_title + '&format=json'), domStats);
