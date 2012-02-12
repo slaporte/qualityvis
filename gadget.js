@@ -218,17 +218,24 @@ var make_evaluator = function(rewards) {
     var calc_scores = function(stats, rewards) {
         var result = {},
         val = 0;
+
+	result.recos = {};
+
         for(var area in rewards) {
 	    for(var attr in rewards[area]) {
                 var r = rewards[area][attr], // reward structure for this area/attr combo
-                    s = stats[attr]; // score of the page for this attribute
+                s = stats[attr]; // page stat for this attribute
+
+		if (!r || !s) {
+		    continue;
+		}
 
                 if(r.type == 'bin') {
 		    if( s >= r.great ) {
                         val = r.reward;
 		    } else if ( s >= r.threshold ) {
                         val = r.reward * .7; // TODO: make tuneable?
-		    }
+		    } 
                 } else if (r.type == 'range') {
 		    var slope = r.reward / r.start;
 		    if( s < r.start) {
@@ -240,6 +247,13 @@ var make_evaluator = function(rewards) {
                         val = r.reward;
 		    }
                 }
+		if (val < r.reward) {
+		    result.recos[attr] = result.recos[attr] || {};
+
+		    var gain = r.reward - val;
+		    result.recos[attr].points    = result.recos[attr].points + gain || gain;
+		    result.recos[attr].cur_stat  = s;
+		}
 
                 result[area]       = result[area] || {};
                 result[area].score = result[area].score + val || val;
@@ -350,54 +364,47 @@ function grokseStats(data) {
 
 function getAssessment(data) {
     var ret = {};
-    for(var id in data['query']['pages']) {
-        if(!data.query.hasOwnProperty('pages')) { // TODO: fixed now, but what does this even do?
-	    continue;
-function printPageStats() {
-    $('#testingHeading').append(page_title);
-    for(var stat in page_stats) {
-Uncaught ReferenceError: page_stats is not defined
-      $('#info').append('<li>' + stat + ': ' + page_stats[stat] + '</li>')
-    }        }
-        var text = (data.query.pages[id].revisions['0']['*']);
-        /* From the 'metadata' gadget
-         * @author Outriggr - created the script and used to maintain it
-         * @author Pyrospirit - currently maintains and updates the script
-         */
-        var rating = 'none';
-        if (text.match(/\|\s*(class|currentstatus)\s*=\s*fa\b/i))
-	    rating = 'fa';
-        else if (text.match(/\|\s*(class|currentstatus)\s*=\s*fl\b/i))
-	    rating = 'fl';
-        else if (text.match(/\|\s*class\s*=\s*a\b/i)) {
-	    if (text.match(/\|\s*class\s*=\s*ga\b|\|\s*currentstatus\s*=\s*(ffa\/)?ga\b/i))
-                rating = 'a/ga'; // A-class articles that are also GA's
-	    else rating = 'a';
-        } else if (text.match(/\|\s*class\s*=\s*ga\b|\|\s*currentstatus\s*=\s*(ffa\/)?ga\b|\{\{\s*ga\s*\|/i)
-                   && !text.match(/\|\s*currentstatus\s*=\s*dga\b/i))
-	    rating = 'ga';
-        else if (text.match(/\|\s*class\s*=\s*b\b/i))
-	    rating = 'b';
-        else if (text.match(/\|\s*class\s*=\s*bplus\b/i))
-	    rating = 'bplus'; // used by WP Math
-        else if (text.match(/\|\s*class\s*=\s*c\b/i))
-	    rating = 'c';
-        else if (text.match(/\|\s*class\s*=\s*start/i))
-	    rating = 'start';
-        else if (text.match(/\|\s*class\s*=\s*stub/i))
-	    rating = 'stub';
-        else if (text.match(/\|\s*class\s*=\s*list/i))
-	    rating = 'list';
-        else if (text.match(/\|\s*class\s*=\s*sl/i))
-	    rating = 'sl'; // used by WP Plants
-        else if (text.match(/\|\s*class\s*=\s*(dab|disambig)/i))
-	    rating = 'dab';
-        else if (text.match(/\|\s*class\s*=\s*cur(rent)?/i))
-	    rating = 'cur';
-        else if (text.match(/\|\s*class\s*=\s*future/i))
-	    rating = 'future';
-        ret.assessment = rating; // TODO: doesn't this belong outside the loop?
-    }
+    var id = keys(data['query']['pages'])[0];
+
+    var text = (data.query.pages[id].revisions['0']['*']);
+    /* From the 'metadata' gadget
+     * @author Outriggr - created the script and used to maintain it
+     * @author Pyrospirit - currently maintains and updates the script
+     */
+    var rating = 'none';
+    if (text.match(/\|\s*(class|currentstatus)\s*=\s*fa\b/i))
+	rating = 'fa';
+    else if (text.match(/\|\s*(class|currentstatus)\s*=\s*fl\b/i))
+	rating = 'fl';
+    else if (text.match(/\|\s*class\s*=\s*a\b/i)) {
+	if (text.match(/\|\s*class\s*=\s*ga\b|\|\s*currentstatus\s*=\s*(ffa\/)?ga\b/i))
+            rating = 'a/ga'; // A-class articles that are also GA's
+	else rating = 'a';
+    } else if (text.match(/\|\s*class\s*=\s*ga\b|\|\s*currentstatus\s*=\s*(ffa\/)?ga\b|\{\{\s*ga\s*\|/i)
+               && !text.match(/\|\s*currentstatus\s*=\s*dga\b/i))
+	rating = 'ga';
+    else if (text.match(/\|\s*class\s*=\s*b\b/i))
+	rating = 'b';
+    else if (text.match(/\|\s*class\s*=\s*bplus\b/i))
+	rating = 'bplus'; // used by WP Math
+    else if (text.match(/\|\s*class\s*=\s*c\b/i))
+	rating = 'c';
+    else if (text.match(/\|\s*class\s*=\s*start/i))
+	rating = 'start';
+    else if (text.match(/\|\s*class\s*=\s*stub/i))
+	rating = 'stub';
+    else if (text.match(/\|\s*class\s*=\s*list/i))
+	rating = 'list';
+    else if (text.match(/\|\s*class\s*=\s*sl/i))
+	rating = 'sl'; // used by WP Plants
+    else if (text.match(/\|\s*class\s*=\s*(dab|disambig)/i))
+	rating = 'dab';
+    else if (text.match(/\|\s*class\s*=\s*cur(rent)?/i))
+	rating = 'cur';
+    else if (text.match(/\|\s*class\s*=\s*future/i))
+	rating = 'future';
+    ret.assessment = rating; // TODO: doesn't this belong outside the loop?
+
     return ret;
 }
 
@@ -445,6 +452,11 @@ $(document).ready(function() {
 
 	for(var area in ev.results) {
 	    $('#results').append('<li>' + area + ': ' + ev.results[area].score + '/' + ev.results[area].max+'</li>')
+	}
+
+	var recos = ev.results.recos
+	for(var attr in recos) {
+	    $('#recos').append('<li>' + attr + ': ' + recos[attr].cur_stat + ';' + recos[attr].points+'</li>')
 	}
     }
     ev.on_complete(printPageStats);
