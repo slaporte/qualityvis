@@ -26,9 +26,9 @@ var testing = true;
 
 
 if(testing == true) {
-    var page_title = 'Charizard';
-    var revid = 471874316;
-    var articleId = 24198906;
+    var page_title = 'Cold_fusion';
+    var revid = 476545765;
+    var articleId = 7463;
 } else {
     var page_title = mw.config.get('wgTitle');
     var revid = mw.config.get('wgCurRevisionId');
@@ -36,8 +36,12 @@ if(testing == true) {
 }
 
 // Convenience functions for reward formulae
-function binStat(threshold, great, reward) {
-    return {'type':'bin','threshold': threshold, 'great': great,'reward': reward};
+function overStat(threshold, great, reward) {
+    return {'type':'over','threshold': threshold, 'great': great,'reward': reward};
+}
+
+function underStat(threshold, great, reward) {
+    return {'type':'under', 'threshold': threshold, 'great': great, 'reward': reward};
 }
 
 function rangeStat(start, end, max_score) {
@@ -49,44 +53,48 @@ function rangeStat(start, end, max_score) {
  */
 var rewards = {
     'vetted': {
-        'unique_authors'        : binStat(20, 40, 100),
-        'paragraph_count'       : rangeStat(10, 30, 100)
+        'unique_authors'        : overStat(20, 40, 200),
+        'paragraph_count'       : rangeStat(10, 30, 100),
+        'wikitrust'             : underStat(.6, .45, 600)
     },
-    // rewards['vetted']['wikitrust_score'] = binStat(.;
     // rewards.vetted.['visits_per_last_edit'] = ;
     // rewards.vetted.['flags_total'] = ;
     'structure': {
-        'ref_section'           : binStat(1, 1, 100),
-        'external_links_total'  : binStat(10, 20, 100)
+        'ref_section'           : overStat(1, 1, 100),
+        'external_links_total'  : overStat(10, 20, 200)
     },
     // rewards.structure.intro_paragraph = ;
-    // rewards.structure.sections_per_link = binStat(;
+    // rewards.structure.sections_per_link = overStat(;
     'richness': {
-        'image_count'           : binStat(2, 4, 100),
-        'external_links_total'  : binStat(10, 20, 100)
+        'image_count'           : overStat(5, 7, 300),
+        'external_links_total'  : overStat(10, 20, 100)
     },
     // rewards.richness.length = ;
     // rewards.richness.audio = ;
     // rewards.geodata = ;
     'integrated': {
-        'category_count'        : binStat(3, 5, 100),
-        'incoming_links'        : binStat(3, 50, 100),
-        'outgoing_links'        : binStat(3, 50, 100)
+        'category_count'        : overStat(15, 30, 100),
+        'incoming_links'        : overStat(3, 50, 100),
+        'outgoing_links'        : overStat(3, 50, 100),
+        'internal_links'        : overStat(100, 200, 400)
     },
     //rewards.integrated.read_more_section = ;
     'community': {
-        'unique_authors'        : binStat(20, 40, 100)
+        'unique_authors'        : overStat(20, 40, 100),
+        'fbTrustworthy'         : overStat(3, 3.5, 100),
+        'fbObjective'           : overStat(3, 3.5, 100),
+        'fbComplete'            : overStat(3, 3.5, 100),
+        'fbWellwritten'         : overStat(3, 3.5, 100)
     },
     //rewards.community.assessment = ;
     //rewards.community.visits_per_day = ;
     //rewards.community.visits_per_last_edit = ;
     //rewards.community.flags_total = ;
-    //rewards.community.trustworthy = ;
-    //rewards.community.objective = ;
-    //rewards.community.complete = ;
-    //rewards.community.wellwritten = ;
     'citations': {
-        'ref_count'             : binStat(5, 10, 100)
+        'ref_count'             : overStat(100, 300, 100),
+        'ref_needed_count'      : underStat(5, 0, 100),
+        'pov_statement_count'   : underStat(2, 0, 100)
+
     },
     //rewards.citations.reference_count_per_paragraph = ;
     //rewards.citations.citation_flag = ;
@@ -95,7 +103,7 @@ var rewards = {
     }
     //rewards.significance.paragraph_per_web_results = {};
     //rewrads.significance.paragraph_per_news_results = {};
-    //rewards.significance = binStat(;
+    //rewards.significance = overStat(;
 }
 
 function keys(obj) {
@@ -216,26 +224,32 @@ var make_evaluator = function(rewards) {
     };
 
     var calc_scores = function(stats, rewards) {
-        var result = {},
-        val = 0;
+        var result = {};
 
 	result.recos = {};
 
         for(var area in rewards) {
 	    for(var attr in rewards[area]) {
                 var r = rewards[area][attr], // reward structure for this area/attr combo
-                s = stats[attr]; // page stat for this attribute
+                s = stats[attr], // page stat for this attribute
+                val = 0;
 
 		if (!r || !s) {
 		    continue;
 		}
 
-                if(r.type == 'bin') {
+                if(r.type == 'over') {
 		    if( s >= r.great ) {
                         val = r.reward;
 		    } else if ( s >= r.threshold ) {
                         val = r.reward * .7; // TODO: make tuneable?
 		    } 
+                } else if (r.type == 'under') {
+            if( s < r.great ) {
+                        val = r.reward;
+            } else if ( s < r.threshold ) {
+                        val = r.reward * .7; // TODO: make tuneable?
+            }
                 } else if (r.type == 'range') {
 		    var slope = r.reward / r.start;
 		    if( s < r.start) {
@@ -285,7 +299,7 @@ function domStats(data) {
     ret.internal_links = data['parse']['links'].length;
     ret.intro_p_count =  $('.mw-content-ltr p', wikitext).length;
 
-    ret.ref_needed_count = $('span:contains("citation needed")', wikitext).length;
+    ret.ref_needed_count = $('span:contains("citation")', wikitext).length;
     ret.pov_statement_count = $('span:contains("neutrality")', wikitext).length;
     ret.pov_statement_count = $('span:contains("neutrality")', wikitext).length;
 
