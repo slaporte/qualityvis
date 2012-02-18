@@ -25,7 +25,7 @@
 var testing = true;
 
 
-if(testing == true) {
+if(testing) {
     var page_title = 'Charizard';
     var revid = 471874316;
     var articleId = 24198906;
@@ -96,7 +96,7 @@ var rewards = {
     //rewards.significance.paragraph_per_web_results = {};
     //rewrads.significance.paragraph_per_news_results = {};
     //rewards.significance = binStat(;
-}
+};
 
 function keys(obj) {
     var ret = [];
@@ -110,7 +110,6 @@ function keys(obj) {
 
 
 function do_query(url, complete_callback, kwargs) {
-    name = name || url;
     var all_kwargs = {
         url: url,
         dataType: 'jsonp',
@@ -123,7 +122,7 @@ function do_query(url, complete_callback, kwargs) {
         }
     };
 
-    for (key in kwargs) {
+    for (var key in kwargs) {
         if(kwargs.hasOwnProperty(key)) {
             all_kwargs[key] = kwargs[key];
         }
@@ -135,15 +134,15 @@ var basic_query = function(url) {
     return function(callback) {
         do_query(url, callback);
     };
-}
+};
 
 var yql_query = function(yql, format) {
     var kwargs = {data: {q: yql, format: format}};
 
     return function(callback) {
         do_query('http://query.yahooapis.com/v1/public/yql', callback, kwargs);
-    }
-}
+    };
+};
 
 
 // One limitation on this model (easily refactored): calculators can't read from data
@@ -160,17 +159,16 @@ var make_evaluator = function(rewards) {
     self.data    = {};
     self.results = null;
     self.inputs  = [];
-    var query_results = []
+    var query_results = [];
     self.add_input = function(name, fetch, calculate) {
         // name is mostly for error messages/debugging
         // source is a callable that takes a callback
         // calculator is a callable that takes data from source and returns results
 	var inputs = self.inputs,
-	input  = {'name':name, 'fetch':fetch, 'calculate':calculate};
+	    input = {'name':name, 'fetch':fetch, 'calculate':calculate};
 	
         inputs.push(input);
 
-        // TODO: try/except
         var save_callback = function() { 
 	    try {
 	        $.extend(self.data, input.calculate(arguments[0]));
@@ -180,7 +178,7 @@ var make_evaluator = function(rewards) {
 	    }
 	};
         input.fetch(save_callback);
-    }
+    };
 
     var callbacks = [];
     var complete_callback = function(page_data, rewards) {
@@ -189,14 +187,14 @@ var make_evaluator = function(rewards) {
 	for(var i=0; i < callbacks.length; ++i) {
 	    callbacks[i](self.results, rewards);
 	}
-    }
+    };
 
     self.on_complete = function(callback) {
 	callbacks.push(callback);
 	// if the queries are complete, we need to manually trigger callback
 	if (query_results.length == self.inputs.length && self.results)
 	    callback(self.results, self.rewards);
-    }
+    };
 
     var input_done = function(input, data) {
 	var tmp_results = [];
@@ -230,13 +228,13 @@ var make_evaluator = function(rewards) {
 		    continue;
 		}
 
-                if(r.type == 'bin') {
+                if(r.type === 'bin') {
 		    if( s >= r.great ) {
                         val = r.reward;
 		    } else if ( s >= r.threshold ) {
-                        val = r.reward * .7; // TODO: make tuneable?
+                        val = r.reward * 0.7; // TODO: make tuneable?
 		    } 
-                } else if (r.type == 'range') {
+                } else if (r.type === 'range') {
 		    var slope = r.reward / r.start;
 		    if( s < r.start) {
                         val = s * slope;
@@ -268,21 +266,21 @@ var make_evaluator = function(rewards) {
     };
 
     return self;
-}
+};
 
 function domStats(data) {
-    var wikitext = data['parse']['text']['*'],
+    var wikitext = data.parse.text['*'],
     ret      = {};
 
     ret.ref_count = $('.reference', wikitext).length;
     ret.paragraph_count = $('.mw-content-ltr p').length;
     ret.image_count = $('img', wikitext).length;
-    ret.category_count = data['parse']['categories'].length;
+    ret.category_count = data.parse.categories.length;
     ret.reference_section_count = $('#References', wikitext).length;
     ret.external_links_section_count = $('#External_links', wikitext).length;
     ret.external_links_in_section = $('#External_links', wikitext).parent().nextAll('ul').children().length;
-    ret.external_links_total = data['parse']['externallinks'].length;
-    ret.internal_links = data['parse']['links'].length;
+    ret.external_links_total = data.parse.externallinks.length;
+    ret.internal_links = data.parse.links.length;
     ret.intro_p_count =  $('.mw-content-ltr p', wikitext).length;
 
     ret.ref_needed_count = $('span:contains("citation needed")', wikitext).length;
@@ -294,12 +292,12 @@ function domStats(data) {
 
 function editorStats(data) {
     var ret = {};
-    for(var id in data['query']['pages']) {
-        var author_counts = {};
-        if(!data['query']['pages'].hasOwnProperty) {
+    for(var id in data.query.pages) {
+        if(!data.query.pages.hasOwnProperty(id)) {
 	    continue;
         }
-        var editor_count = data['query']['pages'][id]['revisions'];
+        var author_counts = {};
+        var editor_count = data.query.pages[id].revisions;
         for(var i = 0; i < editor_count.length; i++) {
 	    if(!author_counts[editor_count[i].user]) {
                 author_counts[editor_count[i].user] = 0;
@@ -316,37 +314,37 @@ function editorStats(data) {
 
 function inLinkStats(data) {
     //TODO: if there are 500 backlinks, we need to make another query
-    var ret = {}
-    ret.incoming_links = data['query']['backlinks'].length;
+    var ret = {};
+    ret.incoming_links = data.query.backlinks.length;
     return ret;
 }
 
 function feedbackStats(data) {
     var ret = {};
 
-    var ratings = data['query']['articlefeedback'][0]['ratings'];
+    var ratings = data.query.articlefeedback[0].ratings;
     var trustworthy = ratings[0];
     var objective = ratings[1];
     var complete = ratings[2];
     var wellwritten = ratings[3];
 
-    ret.fbTrustworthy = trustworthy['total'] / trustworthy['count'];
-    ret.fbObjective = objective['total'] / objective['count'];
-    ret.fbComplete = complete['total'] / complete['count'];
-    ret.fbWellwritten = wellwritten['total'] / wellwritten['count'];
+    ret.fbTrustworthy = trustworthy.total / trustworthy.count;
+    ret.fbObjective = objective.total / objective.count;
+    ret.fbComplete = complete.total / complete.count;
+    ret.fbWellwritten = wellwritten.total / wellwritten.count;
 
     return ret;
 }
 
 function searchStats(data) {
     var ret = {};
-    ret.google_search_results = parseInt(data['responseData']['cursor']['estimatedResultCount']);
+    ret.google_search_results = parseInt(data.responseData.cursor.estimatedResultCount, 10);
     return ret;
 }
 
 function newsStats(data) {
     var ret = {};
-    ret.google_news_results = parseInt(data['responseData']['cursor']['estimatedResultCount'], 10);
+    ret.google_news_results = parseInt(data.responseData.cursor.estimatedResultCount, 10);
     return ret;
 }
 
@@ -364,7 +362,7 @@ function grokseStats(data) {
 
 function getAssessment(data) {
     var ret = {};
-    var id = keys(data['query']['pages'])[0];
+    var id = keys(data.query.pages)[0];
 
     var text = (data.query.pages[id].revisions['0']['*']);
     /* From the 'metadata' gadget
@@ -403,7 +401,7 @@ function getAssessment(data) {
 	rating = 'cur';
     else if (text.match(/\|\s*class\s*=\s*future/i))
 	rating = 'future';
-    ret.assessment = rating; // TODO: doesn't this belong outside the loop?
+    ret.assessment = rating;
 
     return ret;
 }
@@ -447,17 +445,17 @@ $(document).ready(function() {
     var printPageStats = function() {
 	$('#testingHeading').append(page_title);
 	for(var stat in ev.data) {
-	    $('#info').append('<li>' + stat + ': ' + ev.data[stat] + '</li>')
+	    $('#info').append('<li>' + stat + ': ' + ev.data[stat] + '</li>');
 	}
 
 	for(var area in ev.results) {
-	    $('#results').append('<li>' + area + ': ' + ev.results[area].score + '/' + ev.results[area].max+'</li>')
+	    $('#results').append('<li>' + area + ': ' + ev.results[area].score + '/' + ev.results[area].max+'</li>');
 	}
 
-	var recos = ev.results.recos
+	var recos = ev.results.recos;
 	for(var attr in recos) {
-	    $('#recos').append('<li>' + attr + ': ' + recos[attr].cur_stat + ';' + recos[attr].points+'</li>')
+	    $('#recos').append('<li>' + attr + ': ' + recos[attr].cur_stat + ';' + recos[attr].points+'</li>');
 	}
-    }
+    };
     ev.on_complete(printPageStats);
 });
