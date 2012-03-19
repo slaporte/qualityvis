@@ -25,12 +25,12 @@
 var testing = true;
 
 
-if(testing == true) {
-    var page_title = 'Cold_fusion';
-    var revid = 476545765;
-    var articleId = 7463;
+if(testing === true) {
+    var article_title = 'Charizard';
+    //var revid = 476545765;
+    //var articleId = 7463;
 } else {
-    var page_title = mw.config.get('wgTitle');
+    var article_title = mw.config.get('wgTitle');
     var revid = mw.config.get('wgCurRevisionId');
     var articleId = mw.config.get('wgArticleId');
 }
@@ -55,7 +55,7 @@ var rewards = {
     'vetted': {
         'unique_authors'        : overStat(20, 40, 200),
         'paragraph_count'       : rangeStat(10, 30, 100),
-        'wikitrust'             : underStat(.6, .45, 600)
+        'wikitrust'             : underStat(0.6, 0.45, 600)
     },
     // rewards.vetted.['visits_per_last_edit'] = ;
     // rewards.vetted.['flags_total'] = ;
@@ -104,7 +104,7 @@ var rewards = {
     //rewards.significance.paragraph_per_web_results = {};
     //rewrads.significance.paragraph_per_news_results = {};
     //rewards.significance = overStat(;
-}
+};
 
 function keys(obj) {
     var ret = [];
@@ -116,14 +116,20 @@ function keys(obj) {
     return ret;
 }
 
-var do_one = true;
+var dummy_window = require('jsdom').jsdom().createWindow();
+dummy_window.XMLHttpRequest = require('xmlhttprequest').XMLHttpRequest;
+var $ = require('jquery').create(dummy_window);
+    $.support.cors = true;
+var extend = $.extend;
+
+var global_timeout = 8000;
 
 function do_query(url, complete_callback, kwargs) {
     var all_kwargs = {
         url: url,
     type: 'get',
         dataType: 'json',
-        timeout: 3000, // TODO: convert to setting. Necessary to detect jsonp error.
+        timeout: global_timeout, // TODO: convert to setting. Necessary to detect jsonp error.
         success: function(data) {
             complete_callback(data);
         },
@@ -138,11 +144,6 @@ function do_query(url, complete_callback, kwargs) {
             all_kwargs[key] = kwargs[key];
         }
     }
-    /*if (do_one) {
-    all_kwargs['url'] = 'http://httpbin.org/user-agent';
-    all_kwargs['success'] = function(data) { console.log(data); };
-    do_one = false;
-    }*/
 
     $.ajax(all_kwargs);
 }
@@ -167,42 +168,57 @@ var yql_query = function(yql, format) {
 // be present.
 
 // TODO: refactor to allow inputs without fetches. pass in DOM/global-level input data
-var make_evaluator = function(rewards) {
+var make_evaluator = function(dom, rewards) {
 
-    var self     = {};
-
+    var self          = {};
+    var query_results = [];
+    var callbacks     = [];
+    
+    self.article_title = dom.mw.config.get('wgTitle');
+    self.article_id    = dom.mw.config.get('wgArticleId');
+    self.revision_id   = dom.mw.config.get('wgCurRevisionId');
+    self.dom           = dom; // TODO rename to document for internal use?
     self.rewards = rewards;
-
+    
     self.data    = {};
     self.results = null;
     self.inputs  = [];
-    var query_results = [];
+    self.failed_inputs = [];
+    
     self.add_input = function(name, fetch, calculate) {
         // name is mostly for error messages/debugging
         // source is a callable that takes a callback
         // calculator is a callable that takes data from source and returns results
         var inputs = self.inputs,
             input = {'name':name, 'fetch':fetch, 'calculate':calculate};
-        
-            inputs.push(input);
+        inputs.push(input);
 
-            var save_callback = function() { 
+        var save_callback = function() {
             try {
-                $.extend(self.data, input.calculate(arguments[0]));
-                    input_done(input, arguments[0], calc_scores);
-                } catch (err) {
-            throw err;
+                extend(self.data, input.calculate(arguments[0], self.dom));
+                input_done(input, arguments[0], calc_scores);
+            } catch (err) {
+                input_done(input, {}, calc_scores);
+                self.failed_inputs.push(input);
             }
         };
-        input.fetch(save_callback);
+        if (fetch) {
+            input.fetch(save_callback);
+        } else {
+            save_callback({}); // TODO clarify
+        }
     };
 
-    var callbacks = [];
     var complete_callback = function(page_data, rewards) {
+        var fail_count = self.failed_inputs.length;
+
+        if (fail_count > 0) {
+            console.log('\nWarning: There were ' + fail_count + ' failed inputs.\n');
+        }
         self.results = calc_scores(page_data, rewards);
 
         for(var i=0; i < callbacks.length; ++i) {
-            callbacks[i](self.results, rewards);
+            callbacks[i](self);
         }
     };
 
@@ -211,18 +227,20 @@ var make_evaluator = function(rewards) {
         // if the queries are complete, we need to manually trigger callback
         if (query_results.length == self.inputs.length && self.results)
             callback(self.results, self.rewards);
-        };
 
-        var input_done = function(input, data) {
-        var tmp_results = [];
-        var inputs = self.inputs;
+    };
 
-            input.data = data;
-            for (var i = 0; i < inputs.length; ++i) {
-            if (inputs[i].data)
-                    tmp_results.push(inputs[i].data);
-            // TODO add request failure handling
+    var input_done = function(input, data) {
+        var tmp_results = [],
+            inputs = self.inputs;
+
+        input.data = data;
+        for (var i = 0; i < inputs.length; ++i) {
+            if (inputs[i].data !== undefined) {
+                tmp_results.push(inputs[i].data);
             }
+            // TODO add request failure handling
+        }
 
         if (tmp_results.length == inputs.length) {
             query_results = tmp_results;
@@ -238,8 +256,9 @@ var make_evaluator = function(rewards) {
         for(var area in rewards) {
             for(var attr in rewards[area]) {
                 var r = rewards[area][attr], // reward structure for this area/attr combo
-                s = stats[attr], // page stat for this attribute
-                val = 0;
+
+                    s = stats[attr], // page stat for this attribute
+                    val = 0;
 
                 if (!r || !s) {
                     continue;
@@ -247,15 +266,15 @@ var make_evaluator = function(rewards) {
 
                 if(r.type == 'over') {
                     if( s >= r.great ) {
-                        val = r.reward;
+                            val = r.reward;
                     } else if ( s >= r.threshold ) {
-                        val = r.reward * 0.7; // TODO: make tuneable?
-                    } 
+                            val = r.reward * 0.7; // TODO: make tuneable?
+                    }
                 } else if (r.type == 'under') {
                     if( s < r.great ) {
                                 val = r.reward;
                     } else if ( s < r.threshold ) {
-                                val = r.reward * .7; // TODO: make tuneable?
+                                val = r.reward * 0.7; // TODO: make tuneable?
                     }
                 } else if (r.type === 'range') {
                     var slope = r.reward / r.start;
@@ -288,58 +307,45 @@ var make_evaluator = function(rewards) {
         return result;
     };
 
+    // TODO these inputs could be callable objects. add a 'source' attribute to a function and add that as an input to the evaluator.
+    self.add_input('editorStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=' + self.article_title + '&rvprop=user&rvlimit=50&format=json'), editorStats);
+    self.add_input('inLinkStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&format=json&list=backlinks&bltitle=' + self.article_title + '&bllimit=500&blnamespace=0'), inLinkStats);
+    self.add_input('feedbackStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&list=articlefeedback&afpageid=' + self.article_id + '&afuserrating=1&format=json&afanontoken=01234567890123456789012345678912'), feedbackStats);
+    self.add_input('searchStats', basic_query('http://ajax.googleapis.com/ajax/services/search/web?v=1.0&q=' + self.article_title), searchStats);
+    self.add_input('newsStats', basic_query('http://ajax.googleapis.com/ajax/services/search/news?v=1.0&q=' + self.article_title), newsStats);
+    self.add_input('wikitrustStats', yql_query('select * from html where url ="http://en.collaborativetrust.com/WikiTrust/RemoteAPI?method=quality&revid=' + self.revision_id + '"', 'json'), wikitrustStats);
+    self.add_input('grokseStats', yql_query('select * from json where url ="http://stats.grok.se/json/en/201201/' + self.article_title + '"', 'json'), grokseStats);
+    self.add_input('getAssessment', basic_query('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + self.article_title + '&rvprop=content&redirects=true&format=json'), getAssessment);
+    self.add_input('domStats', null, domStats);
+    
     return self;
 };
 
-function domStats(data) {
-    var wikitext = data.parse.text['*'],
-        ret      = {};
 
-    var jsdom    = require("jsdom");
-    /*document = jsdom(wikitext, 
-             null, 
-             { features: {
-             QuerySelector: true,
-             }}),
-        window   = document.createWindow(); */
+function domStats(data, dom) {
+    var ret = {},
+        $   = dom.jQuery;
 
-
-    var done = false;
-    jsdom.env({
-    html: wikitext,
-    scripts: [
-        './jquery.js'
-    ],
-    done: function(errors, window) {
-        var $ = window.$;
-        // removed ", wikitext"
-        ret.ref_count = $('.reference').length;
-        ret.paragraph_count = $('.mw-content-ltr p').length;
-        ret.image_count = $('img', wikitext).length;
-        ret.category_count = data.parse.categories.length;
-        ret.reference_section_count = $('#References', wikitext).length;
-        ret.external_links_section_count = $('#External_links', wikitext).length;
-        ret.external_links_in_section = $('#External_links', wikitext).parent().nextAll('ul').children().length;
-        ret.external_links_total = data.parse.externallinks.length;
-        ret.internal_links = data.parse.links.length;
-        ret.intro_p_count =  $('.mw-content-ltr p', wikitext).length;
-        
-        ret.ref_needed_count = $('span:contains("citation")', wikitext).length;
-        ret.pov_statement_count = $('span:contains("neutrality")', wikitext).length;
-        ret.pov_statement_count = $('span:contains("neutrality")', wikitext).length;
-        console.log(ret);
-        done = true;
-    }
-    });
-
-    //$ = require('jquery').create(window);
-
-
-
-
+    ret.ref_count = $('.reference').length;
+    
+    ret.paragraph_count = $('.mw-content-ltr p').length;
+    ret.image_count = $('img').length;
+    //ret.category_count = data.parse.categories.length -> dom.mw.config.get('categories').length;
+    ret.reference_section_count = $('#References').length;
+    ret.external_links_section_count = $('#External_links').length;
+    ret.external_links_in_section = $('#External_links').parent().nextAll('ul').children().length;
+    //ret.external_links_total = data.parse.externallinks.length;
+    //ret.internal_links = data.parse.links.length;
+    ret.intro_p_count =  $('.mw-content-ltr p').length;
+    
+    ret.ref_needed_count = $('span:contains("citation")').length;
+    ret.pov_statement_count = $('span:contains("neutrality")').length;
+    ret.pov_statement_count = $('span:contains("neutrality")').length;
+    
     return ret;
 }
 
+// Start calculation functions
 function editorStats(data) {
     var ret = {};
     for(var id in data.query.pages) {
@@ -349,10 +355,10 @@ function editorStats(data) {
         var author_counts = {};
         var editor_count = data.query.pages[id].revisions;
         for(var i = 0; i < editor_count.length; i++) {
-        if(!author_counts[editor_count[i].user]) {
-                author_counts[editor_count[i].user] = 0;
-        }
-        author_counts[editor_count[i].user] += 1;
+            if(!author_counts[editor_count[i].user]) {
+                    author_counts[editor_count[i].user] = 0;
+            }
+            author_counts[editor_count[i].user] += 1;
         }
         ret.author_counts = author_counts;
     }
@@ -360,7 +366,6 @@ function editorStats(data) {
 
     return ret;
 }
-
 
 function inLinkStats(data) {
     //TODO: if there are 500 backlinks, we need to make another query
@@ -372,11 +377,11 @@ function inLinkStats(data) {
 function feedbackStats(data) {
     var ret = {};
 
-    var ratings = data.query.articlefeedback[0].ratings;
-    var trustworthy = ratings[0];
-    var objective = ratings[1];
-    var complete = ratings[2];
-    var wellwritten = ratings[3];
+    var ratings     = data.query.articlefeedback[0].ratings,
+        trustworthy = ratings[0],
+        objective   = ratings[1],
+        complete    = ratings[2],
+        wellwritten = ratings[3];
 
     ret.fbTrustworthy = trustworthy.total / trustworthy.count;
     ret.fbObjective = objective.total / objective.count;
@@ -412,9 +417,9 @@ function grokseStats(data) {
 
 function getAssessment(data) {
     var ret = {};
-    var id = keys(data.query.pages)[0];
+    var id      = keys(data.query.pages)[0],
+        text    = (data.query.pages[id].revisions['0']['*']);
 
-    var text = (data.query.pages[id].revisions['0']['*']);
     /* From the 'metadata' gadget
      * @author Outriggr - created the script and used to maintain it
      * @author Pyrospirit - currently maintains and updates the script
@@ -428,9 +433,10 @@ function getAssessment(data) {
     if (text.match(/\|\s*class\s*=\s*ga\b|\|\s*currentstatus\s*=\s*(ffa\/)?ga\b/i))
             rating = 'a/ga'; // A-class articles that are also GA's
     else rating = 'a';
-    } else if (text.match(/\|\s*class\s*=\s*ga\b|\|\s*currentstatus\s*=\s*(ffa\/)?ga\b|\{\{\s*ga\s*\|/i)
-               && !text.match(/\|\s*currentstatus\s*=\s*dga\b/i))
-    rating = 'ga';
+    } else if (text.match(/\|\s*class\s*=\s*ga\b|\|\s*currentstatus\s*=\s*(ffa\/)?ga\b|\{\{\s*ga\s*\|/i) &&
+              !text.match(/\|\s*currentstatus\s*=\s*dga\b/i))
+
+        rating = 'ga';
     else if (text.match(/\|\s*class\s*=\s*b\b/i))
     rating = 'b';
     else if (text.match(/\|\s*class\s*=\s*bplus\b/i))
@@ -456,47 +462,88 @@ function getAssessment(data) {
     return ret;
 }
 
-var ev = null;
+// End calculation functions
 
-var window = require('jsdom').jsdom().createWindow();
-var XMLHttpRequest = require("xmlhttprequest").XMLHttpRequest;
-window.XMLHttpRequest = require('xmlhttprequest').XMLHttpRequest;
-var $ = require('jquery').create(window);
-$.support.cors = true;
-
-funtimes()
-
-function funtimes() {
-
-    ev = make_evaluator(rewards);
-
-    // TODO these inputs should be callable objects. add a 'source' attribute to a function and add that as an input to the evaluator.
-    ev.add_input('domStats', basic_query('http://en.wikipedia.org/w/api.php?action=parse&page=' + page_title + '&format=json'), domStats);
-    ev.add_input('editorStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=' + page_title + '&rvprop=user&rvlimit=50&format=json'), editorStats);
-    ev.add_input('inLinkStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&format=json&list=backlinks&bltitle=' + page_title + '&bllimit=500&blnamespace=0'), inLinkStats);
-    ev.add_input('feedbackStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&list=articlefeedback&afpageid=' + articleId + '&afuserrating=1&format=json&afanontoken=01234567890123456789012345678912'), feedbackStats);
-    ev.add_input('searchStats', basic_query('http://ajax.googleapis.com/ajax/services/search/web?v=1.0&q=' + page_title), searchStats);
-    ev.add_input('newsStats', basic_query('http://ajax.googleapis.com/ajax/services/search/news?v=1.0&q=' + page_title), newsStats);
-    ev.add_input('wikitrustStats', yql_query('select * from html where url ="http://en.collaborativetrust.com/WikiTrust/RemoteAPI?method=quality&revid=' + revid + '"', 'json'), wikitrustStats);
-    ev.add_input('grokseStats', yql_query('select * from json where url ="http://stats.grok.se/json/en/201201/' + page_title + '"', 'json'), grokseStats);
-    ev.add_input('getAssessment', basic_query('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + page_title + '&rvprop=content&redirects=true&format=json'), getAssessment);
-
-    var printPageStats = function() {
-    console.log("Page stats for "+page_title);
+function print_page_stats(ev) {
+    console.log("\nPage stats for " + ev.article_title + "\n");
     for(var stat in ev.data) {
         console.log(stat + ': ' + ev.data[stat]);
     }
 
-    console.log("\nResults for "+page_title);
+
+    console.log("\nResults for " + ev.article_title + "\n");
     for(var area in ev.results) {
         console.log(area + ': ' + ev.results[area].score + '/' + ev.results[area].max);
     }
 
-    console.log("\nRecommendations for "+page_title);
+    console.log("\nRecommendations for " + ev.article_title + "\n");
     var recos = ev.results.recos;
     for(var attr in recos) {
         console.log(attr + ': ' + recos[attr].cur_stat + ';' + recos[attr].points);
     }
-    };
-    ev.on_complete(printPageStats);
-};
+}
+
+function get_article_info(article_title) {
+    do_query('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles='+article_title+'&rvprop=ids&redirects=true&format=json',
+        function(data) {
+            var page_ids = keys(data.query.pages),
+                pages    = data.query.pages;
+            if (page_ids.length > 0) {
+                var article_id    = page_ids[0];
+                    article_title = pages[article_id].title;
+                    rev_id        = pages[article_id].revisions[0].revid;
+                    prev_rev_id   = pages[article_id].revisions[0].parentid;
+                
+                get_article(article_title, article_id, rev_id);
+                
+            } else {
+                console.log('No article with title '+ article_title + ' found.');
+            }
+        });
+}
+
+function get_article(article_title, article_id, revision_id) {
+    var get_article_start = (new Date()).getTime(); //time
+    
+    do_query('http://en.wikipedia.org/w/api.php?action=parse&page='+article_title+'&format=json&redirects=true',
+         function(data) {
+            var text                = data.parse.text['*'],
+                get_article_end     = (new Date()).getTime(),
+                get_article_time    = get_article_end - get_article_start;
+
+            console.log('got text ('+text.length+' bytes took '+get_article_time/1000+' seconds)');
+            
+            var parse_article_start = (new Date()).getTime();
+            var jsdom = require('jsdom');
+            
+            jsdom.env({
+                html: text,
+                done: function(errors, window) {
+                    var $                   = require('jquery').create(window),
+                        parse_article_end   = (new Date()).getTime(),
+                        parse_article_time  = parse_article_end - parse_article_start;
+                    console.log('got our window (took '+parse_article_time/1000+' seconds)');
+                    
+                    var real_values = {
+                        'wgTitle': article_title,
+                        'wgArticleId': article_id,
+                        'wgCurRevisionId': rev_id
+                    };
+
+                    var mw = {}; //building a mock object to look like mw (loaded on wikipedia by javascript)
+                    mw.config = {};
+                    mw.config.get = function(key) {
+                        return real_values[key] || null;
+                    };
+                    window.mw = mw; //attach mock object to fake window
+                    
+                    var ev = make_evaluator(window, rewards);
+                    ev.on_complete(print_page_stats);
+                }
+            });
+        }
+    );
+}
+
+var start = get_article_info;
+start(article_title);
