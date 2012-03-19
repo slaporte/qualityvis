@@ -121,7 +121,7 @@ var do_one = true;
 function do_query(url, complete_callback, kwargs) {
     var all_kwargs = {
         url: url,
-	type: 'get',
+    type: 'get',
         dataType: 'json',
         timeout: 3000, // TODO: convert to setting. Necessary to detect jsonp error.
         success: function(data) {
@@ -130,7 +130,7 @@ function do_query(url, complete_callback, kwargs) {
         error: function(jqXHR, textStatus, errorThrown) {
             complete_callback(jqXHR, textStatus, errorThrown);
         },
-	headers: { 'User-Agent': 'QualityVis/0.0.0 Mahmoud Hashemi makuro@gmail.com' }
+    headers: { 'User-Agent': 'QualityVis/0.0.0 Mahmoud Hashemi makuro@gmail.com' }
     };
 
     for (var key in kwargs) {
@@ -139,9 +139,9 @@ function do_query(url, complete_callback, kwargs) {
         }
     }
     /*if (do_one) {
-	all_kwargs['url'] = 'http://httpbin.org/user-agent';
-	all_kwargs['success'] = function(data) { console.log(data); };
-	do_one = false;
+    all_kwargs['url'] = 'http://httpbin.org/user-agent';
+    all_kwargs['success'] = function(data) { console.log(data); };
+    do_one = false;
     }*/
 
     $.ajax(all_kwargs);
@@ -181,100 +181,100 @@ var make_evaluator = function(rewards) {
         // name is mostly for error messages/debugging
         // source is a callable that takes a callback
         // calculator is a callable that takes data from source and returns results
-	var inputs = self.inputs,
-	    input = {'name':name, 'fetch':fetch, 'calculate':calculate};
-	
-        inputs.push(input);
+        var inputs = self.inputs,
+            input = {'name':name, 'fetch':fetch, 'calculate':calculate};
+        
+            inputs.push(input);
 
-        var save_callback = function() { 
-	    try {
-	        $.extend(self.data, input.calculate(arguments[0]));
-                input_done(input, arguments[0], calc_scores);
-            } catch (err) {
-		throw err;
-	    }
-	};
+            var save_callback = function() { 
+            try {
+                $.extend(self.data, input.calculate(arguments[0]));
+                    input_done(input, arguments[0], calc_scores);
+                } catch (err) {
+            throw err;
+            }
+        };
         input.fetch(save_callback);
     };
 
     var callbacks = [];
     var complete_callback = function(page_data, rewards) {
-	self.results = calc_scores(page_data, rewards);
+        self.results = calc_scores(page_data, rewards);
 
-	for(var i=0; i < callbacks.length; ++i) {
-	    callbacks[i](self.results, rewards);
-	}
+        for(var i=0; i < callbacks.length; ++i) {
+            callbacks[i](self.results, rewards);
+        }
     };
 
     self.on_complete = function(callback) {
-	callbacks.push(callback);
-	// if the queries are complete, we need to manually trigger callback
-	if (query_results.length == self.inputs.length && self.results)
-	    callback(self.results, self.rewards);
-    };
+        callbacks.push(callback);
+        // if the queries are complete, we need to manually trigger callback
+        if (query_results.length == self.inputs.length && self.results)
+            callback(self.results, self.rewards);
+        };
 
-    var input_done = function(input, data) {
-	var tmp_results = [];
-	var inputs = self.inputs;
+        var input_done = function(input, data) {
+        var tmp_results = [];
+        var inputs = self.inputs;
 
-        input.data = data;
-        for (var i = 0; i < inputs.length; ++i) {
-	    if (inputs[i].data)
-                tmp_results.push(inputs[i].data);
-	    // TODO add request failure handling
+            input.data = data;
+            for (var i = 0; i < inputs.length; ++i) {
+            if (inputs[i].data)
+                    tmp_results.push(inputs[i].data);
+            // TODO add request failure handling
+            }
+
+        if (tmp_results.length == inputs.length) {
+            query_results = tmp_results;
+            complete_callback(self.data, self.rewards);
         }
-
-	if (tmp_results.length == inputs.length) {
-	    query_results = tmp_results;
-	    complete_callback(self.data, self.rewards);
-	}
     };
 
     var calc_scores = function(stats, rewards) {
         var result = {};
 
-	result.recos = {};
+        result.recos = {};
 
         for(var area in rewards) {
-	    for(var attr in rewards[area]) {
+            for(var attr in rewards[area]) {
                 var r = rewards[area][attr], // reward structure for this area/attr combo
                 s = stats[attr], // page stat for this attribute
                 val = 0;
 
-		if (!r || !s) {
-		    continue;
-		}
+                if (!r || !s) {
+                    continue;
+                }
 
-        if(r.type == 'over') {
-	    if( s >= r.great ) {
-                val = r.reward;
-	    } else if ( s >= r.threshold ) {
-                val = r.reward * 0.7; // TODO: make tuneable?
-	    } 
-        } else if (r.type == 'under') {
-            if( s < r.great ) {
+                if(r.type == 'over') {
+                    if( s >= r.great ) {
                         val = r.reward;
-            } else if ( s < r.threshold ) {
-                        val = r.reward * .7; // TODO: make tuneable?
-            }
-        } else if (r.type === 'range') {
-	    var slope = r.reward / r.start;
-	    if( s < r.start) {
-                val = s * slope;
-	    } else if( s > r.threshold){
-                val = r.reward - ((s - r.threshold) * slope);
-                val = Math.max(0, val);
-	    } else {
-                val = r.reward;
-	    }
-        }
-		if (val < r.reward) {
-		    result.recos[attr] = result.recos[attr] || {};
+                    } else if ( s >= r.threshold ) {
+                        val = r.reward * 0.7; // TODO: make tuneable?
+                    } 
+                } else if (r.type == 'under') {
+                    if( s < r.great ) {
+                                val = r.reward;
+                    } else if ( s < r.threshold ) {
+                                val = r.reward * .7; // TODO: make tuneable?
+                    }
+                } else if (r.type === 'range') {
+                    var slope = r.reward / r.start;
+                    if( s < r.start) {
+                            val = s * slope;
+                    } else if( s > r.threshold){
+                            val = r.reward - ((s - r.threshold) * slope);
+                            val = Math.max(0, val);
+                    } else {
+                            val = r.reward;
+                    }
+                }
+                if (val < r.reward) {
+                    result.recos[attr] = result.recos[attr] || {};
 
-		    var gain = r.reward - val;
-		    result.recos[attr].points    = result.recos[attr].points + gain || gain;
-		    result.recos[attr].cur_stat  = s;
-		}
+                    var gain = r.reward - val;
+                    result.recos[attr].points    = result.recos[attr].points + gain || gain;
+                    result.recos[attr].cur_stat  = s;
+                }
 
                 result[area]       = result[area] || {};
                 result[area].score = result[area].score + val || val;
@@ -283,7 +283,7 @@ var make_evaluator = function(rewards) {
                 result.total       = result.total || {};
                 result.total.score = result.total.score + val || val;
                 result.total.max   = result.total.max + r.reward || r.reward;
-	    }
+            }
         }
         return result;
     };
@@ -297,39 +297,39 @@ function domStats(data) {
 
     var jsdom    = require("jsdom");
     /*document = jsdom(wikitext, 
-		     null, 
-		     { features: {
-			 QuerySelector: true,
-		     }}),
+             null, 
+             { features: {
+             QuerySelector: true,
+             }}),
         window   = document.createWindow(); */
 
 
     var done = false;
     jsdom.env({
-	html: wikitext,
-	scripts: [
-	    './jquery.js'
-	],
-	done: function(errors, window) {
-	    var $ = window.$;
-	    // removed ", wikitext"
-	    ret.ref_count = $('.reference').length;
-	    ret.paragraph_count = $('.mw-content-ltr p').length;
-	    ret.image_count = $('img', wikitext).length;
-	    ret.category_count = data.parse.categories.length;
-	    ret.reference_section_count = $('#References', wikitext).length;
-	    ret.external_links_section_count = $('#External_links', wikitext).length;
-	    ret.external_links_in_section = $('#External_links', wikitext).parent().nextAll('ul').children().length;
-	    ret.external_links_total = data.parse.externallinks.length;
-	    ret.internal_links = data.parse.links.length;
-	    ret.intro_p_count =  $('.mw-content-ltr p', wikitext).length;
-	    
-	    ret.ref_needed_count = $('span:contains("citation")', wikitext).length;
-	    ret.pov_statement_count = $('span:contains("neutrality")', wikitext).length;
-	    ret.pov_statement_count = $('span:contains("neutrality")', wikitext).length;
-	    console.log(ret);
-	    done = true;
-	}
+    html: wikitext,
+    scripts: [
+        './jquery.js'
+    ],
+    done: function(errors, window) {
+        var $ = window.$;
+        // removed ", wikitext"
+        ret.ref_count = $('.reference').length;
+        ret.paragraph_count = $('.mw-content-ltr p').length;
+        ret.image_count = $('img', wikitext).length;
+        ret.category_count = data.parse.categories.length;
+        ret.reference_section_count = $('#References', wikitext).length;
+        ret.external_links_section_count = $('#External_links', wikitext).length;
+        ret.external_links_in_section = $('#External_links', wikitext).parent().nextAll('ul').children().length;
+        ret.external_links_total = data.parse.externallinks.length;
+        ret.internal_links = data.parse.links.length;
+        ret.intro_p_count =  $('.mw-content-ltr p', wikitext).length;
+        
+        ret.ref_needed_count = $('span:contains("citation")', wikitext).length;
+        ret.pov_statement_count = $('span:contains("neutrality")', wikitext).length;
+        ret.pov_statement_count = $('span:contains("neutrality")', wikitext).length;
+        console.log(ret);
+        done = true;
+    }
     });
 
     //$ = require('jquery').create(window);
@@ -344,15 +344,15 @@ function editorStats(data) {
     var ret = {};
     for(var id in data.query.pages) {
         if(!data.query.pages.hasOwnProperty(id)) {
-	    continue;
+        continue;
         }
         var author_counts = {};
         var editor_count = data.query.pages[id].revisions;
         for(var i = 0; i < editor_count.length; i++) {
-	    if(!author_counts[editor_count[i].user]) {
+        if(!author_counts[editor_count[i].user]) {
                 author_counts[editor_count[i].user] = 0;
-	    }
-	    author_counts[editor_count[i].user] += 1;
+        }
+        author_counts[editor_count[i].user] += 1;
         }
         ret.author_counts = author_counts;
     }
@@ -421,36 +421,36 @@ function getAssessment(data) {
      */
     var rating = 'none';
     if (text.match(/\|\s*(class|currentstatus)\s*=\s*fa\b/i))
-	rating = 'fa';
+    rating = 'fa';
     else if (text.match(/\|\s*(class|currentstatus)\s*=\s*fl\b/i))
-	rating = 'fl';
+    rating = 'fl';
     else if (text.match(/\|\s*class\s*=\s*a\b/i)) {
-	if (text.match(/\|\s*class\s*=\s*ga\b|\|\s*currentstatus\s*=\s*(ffa\/)?ga\b/i))
+    if (text.match(/\|\s*class\s*=\s*ga\b|\|\s*currentstatus\s*=\s*(ffa\/)?ga\b/i))
             rating = 'a/ga'; // A-class articles that are also GA's
-	else rating = 'a';
+    else rating = 'a';
     } else if (text.match(/\|\s*class\s*=\s*ga\b|\|\s*currentstatus\s*=\s*(ffa\/)?ga\b|\{\{\s*ga\s*\|/i)
                && !text.match(/\|\s*currentstatus\s*=\s*dga\b/i))
-	rating = 'ga';
+    rating = 'ga';
     else if (text.match(/\|\s*class\s*=\s*b\b/i))
-	rating = 'b';
+    rating = 'b';
     else if (text.match(/\|\s*class\s*=\s*bplus\b/i))
-	rating = 'bplus'; // used by WP Math
+    rating = 'bplus'; // used by WP Math
     else if (text.match(/\|\s*class\s*=\s*c\b/i))
-	rating = 'c';
+    rating = 'c';
     else if (text.match(/\|\s*class\s*=\s*start/i))
-	rating = 'start';
+    rating = 'start';
     else if (text.match(/\|\s*class\s*=\s*stub/i))
-	rating = 'stub';
+    rating = 'stub';
     else if (text.match(/\|\s*class\s*=\s*list/i))
-	rating = 'list';
+    rating = 'list';
     else if (text.match(/\|\s*class\s*=\s*sl/i))
-	rating = 'sl'; // used by WP Plants
+    rating = 'sl'; // used by WP Plants
     else if (text.match(/\|\s*class\s*=\s*(dab|disambig)/i))
-	rating = 'dab';
+    rating = 'dab';
     else if (text.match(/\|\s*class\s*=\s*cur(rent)?/i))
-	rating = 'cur';
+    rating = 'cur';
     else if (text.match(/\|\s*class\s*=\s*future/i))
-	rating = 'future';
+    rating = 'future';
     ret.assessment = rating;
 
     return ret;
@@ -482,21 +482,21 @@ function funtimes() {
     ev.add_input('getAssessment', basic_query('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + page_title + '&rvprop=content&redirects=true&format=json'), getAssessment);
 
     var printPageStats = function() {
-	console.log("Page stats for "+page_title);
-	for(var stat in ev.data) {
-	    console.log(stat + ': ' + ev.data[stat]);
-	}
+    console.log("Page stats for "+page_title);
+    for(var stat in ev.data) {
+        console.log(stat + ': ' + ev.data[stat]);
+    }
 
-	console.log("\nResults for "+page_title);
-	for(var area in ev.results) {
-	    console.log(area + ': ' + ev.results[area].score + '/' + ev.results[area].max);
-	}
+    console.log("\nResults for "+page_title);
+    for(var area in ev.results) {
+        console.log(area + ': ' + ev.results[area].score + '/' + ev.results[area].max);
+    }
 
-	console.log("\nRecommendations for "+page_title);
-	var recos = ev.results.recos;
-	for(var attr in recos) {
-	    console.log(attr + ': ' + recos[attr].cur_stat + ';' + recos[attr].points);
-	}
+    console.log("\nRecommendations for "+page_title);
+    var recos = ev.results.recos;
+    for(var attr in recos) {
+        console.log(attr + ': ' + recos[attr].cur_stat + ';' + recos[attr].points);
+    }
     };
     ev.on_complete(printPageStats);
 };
