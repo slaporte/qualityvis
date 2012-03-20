@@ -490,10 +490,9 @@ function get_article_info(article_title) {
                 pages    = data.query.pages;
             if (page_ids.length > 0) {
                 var article_id    = page_ids[0];
-                    article_title = pages[article_id].title;
+                    article_title = pages[article_id].title.replace(' ', '_');
                     rev_id        = pages[article_id].revisions[0].revid;
                     prev_rev_id   = pages[article_id].revisions[0].parentid;
-                
                 get_article(article_title, article_id, rev_id);
                 
             } else {
@@ -510,8 +509,8 @@ function get_article(article_title, article_id, revision_id) {
             var text                = data.parse.text['*'],
                 get_article_end     = (new Date()).getTime(),
                 get_article_time    = get_article_end - get_article_start;
-
-            console.log('got text ('+text.length+' bytes took '+get_article_time/1000+' seconds)');
+            
+            console.log('got text for ' + article_title + ' ('+text.length+' bytes took '+get_article_time/1000+' seconds)');
             
             var parse_article_start = (new Date()).getTime();
             var jsdom = require('jsdom');
@@ -522,12 +521,12 @@ function get_article(article_title, article_id, revision_id) {
                     var $                   = require('jquery').create(window),
                         parse_article_end   = (new Date()).getTime(),
                         parse_article_time  = parse_article_end - parse_article_start;
-                    console.log('got our window (took '+parse_article_time/1000+' seconds)');
+                    console.log('got our window for ' + article_title + ' (took '+parse_article_time/1000+' seconds)');
                     
                     var real_values = {
                         'wgTitle': article_title,
                         'wgArticleId': article_id,
-                        'wgCurRevisionId': rev_id
+                        'wgCurRevisionId': revision_id
                     };
 
                     var mw = {}; //building a mock object to look like mw (loaded on wikipedia by javascript)
@@ -536,7 +535,7 @@ function get_article(article_title, article_id, revision_id) {
                         return real_values[key] || null;
                     };
                     window.mw = mw; //attach mock object to fake window
-                    
+
                     var ev = make_evaluator(window, rewards);
                     ev.on_complete(print_page_stats);
                 }
@@ -545,5 +544,25 @@ function get_article(article_title, article_id, revision_id) {
     );
 }
 
-var start = get_article_info;
-start(article_title);
+function get_category(name, limit) {
+    do_query('http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=' + name + '&prop=info&gcmlimit=' + limit + '&format=json',
+        function(data) {
+            var page_keys = keys(data.query.pages),
+                pages     = data.query.pages;
+
+            for(var i=0; i < page_keys.length; ++i){
+                if(pages[page_keys[i]].ns === 0) {
+                    var article_title      = pages[page_keys[i]].title.replace(/\s/g,'_'),
+                        article_id         = pages[page_keys[i]].pageid,
+                        rev_id             = pages[page_keys[i]].lastrevid;
+
+                    get_article(article_title, article_id, rev_id);
+                }
+            }
+        });
+}
+
+//var start = get_article_info;
+//start(article_title);
+var category = get_category;
+category('Category:Pokémon', 5);
