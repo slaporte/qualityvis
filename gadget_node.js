@@ -127,16 +127,19 @@ var global_timeout = 8000;
 function do_query(url, complete_callback, kwargs) {
     var all_kwargs = {
         url: url,
-    type: 'get',
+        type: 'get',
         dataType: 'json',
         timeout: global_timeout, // TODO: convert to setting. Necessary to detect jsonp error.
         success: function(data) {
-            complete_callback(data);
+            complete_callback(null, data);
         },
         error: function(jqXHR, textStatus, errorThrown) {
-            complete_callback(jqXHR, textStatus, errorThrown);
+            complete_callback(errorThrown, null);
         },
-    headers: { 'User-Agent': 'QualityVis/0.0.0 Mahmoud Hashemi makuro@gmail.com' }
+        complete: function(jqXHR, textStatus) {
+            // TODO: error handling (jsonp doesn't get error() calls for a lot of errors)
+        },
+        headers: { 'User-Agent': 'QualityVis/0.0.0 Mahmoud Hashemi makuro@gmail.com' }
     };
 
     for (var key in kwargs) {
@@ -193,11 +196,11 @@ var make_evaluator = function(dom, rewards) {
             input = {'name':name, 'fetch':fetch, 'calculate':calculate};
         inputs.push(input);
 
-        var save_callback = function() {
+        var save_callback = function(err, data) {
             try {
-                extend(self.data, input.calculate(arguments[0], self.dom));
-                input_done(input, arguments[0], calc_scores);
-            } catch (err) {
+                extend(self.data, input.calculate(data, self.dom));
+                input_done(input, data, calc_scores);
+            } catch (real_err) {
                 input_done(input, {}, calc_scores);
                 self.failed_inputs.push(input);
             }
@@ -205,7 +208,7 @@ var make_evaluator = function(dom, rewards) {
         if (fetch) {
             input.fetch(save_callback);
         } else {
-            save_callback({}); // TODO clarify
+            save_callback(null, {}); // TODO clarify
         }
     };
 
@@ -218,16 +221,16 @@ var make_evaluator = function(dom, rewards) {
         self.results = calc_scores(page_data, rewards);
 
         for(var i=0; i < callbacks.length; ++i) {
-            callbacks[i](self);
+            callbacks[i](null, self); //call all the on_complete callbacks
         }
     };
 
     self.on_complete = function(callback) {
         callbacks.push(callback);
         // if the queries are complete, we need to manually trigger callback
-        if (query_results.length == self.inputs.length && self.results)
-            callback(self.results, self.rewards);
-
+        if (query_results.length == self.inputs.length && self.results) {
+            callback(null, self);
+        }
     };
 
     var input_done = function(input, data) {
@@ -244,6 +247,7 @@ var make_evaluator = function(dom, rewards) {
 
         if (tmp_results.length == inputs.length) {
             query_results = tmp_results;
+            console.log('all inputs done');
             complete_callback(self.data, self.rewards);
         }
     };
@@ -464,7 +468,7 @@ function getAssessment(data) {
 
 // End calculation functions
 
-function print_page_stats(ev) {
+function print_page_stats(err, ev) {
     console.log("\nPage stats for " + ev.article_title + "\n");
     for(var stat in ev.data) {
         console.log(stat + ': ' + ev.data[stat]);
@@ -483,9 +487,14 @@ function print_page_stats(ev) {
     }
 }
 
-function get_article_info(article_title) {
+function get_article_info(err, kwargs, callback) {
+    var article_title = kwargs.article_title;
+    
     do_query('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles='+article_title+'&rvprop=ids&redirects=true&format=json',
-        function(data) {
+        function(err, data) {
+            if (err) {
+                console.log('probably timed out');
+            }
             var page_ids = keys(data.query.pages),
                 pages    = data.query.pages;
             if (page_ids.length > 0) {
@@ -493,7 +502,9 @@ function get_article_info(article_title) {
                     article_title = pages[article_id].title.replace(' ', '_');
                     rev_id        = pages[article_id].revisions[0].revid;
                     prev_rev_id   = pages[article_id].revisions[0].parentid;
-                get_article(article_title, article_id, rev_id);
+                callback(null, {'article_title':article_title, 
+                              'article_id':article_id, 
+                              'rev_id': rev_id});
                 
             } else {
                 console.log('No article with title '+ article_title + ' found.');
@@ -501,52 +512,50 @@ function get_article_info(article_title) {
         });
 }
 
-function get_article(article_title, article_id, revision_id) {
-    var get_article_start = (new Date()).getTime(); //time
+function get_article(err, kwargs, callback) {
+    var article_title = kwargs.article_title;
     
     do_query('http://en.wikipedia.org/w/api.php?action=parse&page='+article_title+'&format=json&redirects=true',
-         function(data) {
-            var text                = data.parse.text['*'],
-                get_article_end     = (new Date()).getTime(),
-                get_article_time    = get_article_end - get_article_start;
-            
-            console.log('got text for ' + article_title + ' ('+text.length+' bytes took '+get_article_time/1000+' seconds)');
-            
-            var parse_article_start = (new Date()).getTime();
-            var jsdom = require('jsdom');
-            
-            jsdom.env({
-                html: text,
-                done: function(errors, window) {
-                    var $                   = require('jquery').create(window),
-                        parse_article_end   = (new Date()).getTime(),
-                        parse_article_time  = parse_article_end - parse_article_start;
-                    console.log('got our window for ' + article_title + ' (took '+parse_article_time/1000+' seconds)');
-                    
-                    var real_values = {
-                        'wgTitle': article_title,
-                        'wgArticleId': article_id,
-                        'wgCurRevisionId': revision_id
-                    };
-
-                    var mw = {}; //building a mock object to look like mw (loaded on wikipedia by javascript)
-                    mw.config = {};
-                    mw.config.get = function(key) {
-                        return real_values[key] || null;
-                    };
-                    window.mw = mw; //attach mock object to fake window
-
-                    var ev = make_evaluator(window, rewards);
-                    ev.on_complete(print_page_stats);
-                }
-            });
-        }
+         callback
     );
 }
 
-function get_category(name, limit) {
-    do_query('http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=' + name + '&prop=info&gcmlimit=' + limit + '&format=json',
-        function(data) {
+function prepare_window_node(err, kwargs, callback) {
+    var data                = kwargs.data,
+        article_info        = kwargs.article_info,
+        article             = kwargs.article,
+        article_title       = article_info.article_title,
+        article_id          = article_info.article_id,
+        revision_id         = article_info.article_title,
+        text                = article.parse.text['*'];
+    
+    var jsdom = require('jsdom');
+    
+    jsdom.env({
+        html: text,
+        done: function(errors, window) {
+            var $ = require('jquery').create(window);
+        
+            var real_values = {
+                'wgTitle': article_title,
+                'wgArticleId': article_id,
+                'wgCurRevisionId': revision_id
+            };
+
+            var mw = {}; //building a mock object to look like mw (loaded on wikipedia by javascript)
+            mw.config = {};
+            mw.config.get = function(key) {
+                return real_values[key] || null;
+            };
+            window.mw = mw; //attach mock object to fake window
+            callback(null, window);
+        }
+    });
+}
+
+function get_category(err, kwargs) {
+    do_query('http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=' + kw.name + '&prop=info&gcmlimit=' + kw.limit + '&format=json',
+        function(err, data) {
             var page_keys = keys(data.query.pages),
                 pages     = data.query.pages;
 
@@ -562,7 +571,42 @@ function get_category(name, limit) {
         });
 }
 
+var Step = require('./step.js');
+
+Step(
+    function start() {
+        var kwargs = {'article_title':article_title};
+        console.log("Start QV on "+article_title);
+        get_article_info(null, kwargs, this.parallel()); 
+        get_article(null, kwargs, this.parallel());
+    },
+    function prepare_window(err, article_info, article_content) {
+        if (err) {
+            console.log('Error creating window for article "'+article_info['article_title']+'"');
+            throw err; //return //TODO how to give up?
+        }
+        prepare_window_node(err, {'article_info': article_info, 'article': article_content},
+                            this);
+    },
+    function make_evaluator_wrapper(err, window) {
+        if (err) {
+            console.log('dangit: '+err);
+            throw err;
+        }
+
+        var ev = make_evaluator(window, rewards);
+        ev.on_complete(this);
+    },
+    function all_done(err, evaluator) {
+        if (err) {
+            console.log('dangit2: '+err);
+            throw err; //return //TODO how to give up?
+        }
+        console.log("Done QV on "+article_title);
+        print_page_stats(err, evaluator);
+    }
+);
 //var start = get_article_info;
 //start(article_title);
-var category = get_category;
-category('Category:Pokémon', 5);
+
+//get_category('Category:Pokémon', 5);
