@@ -151,34 +151,65 @@ function do_query(url, complete_callback, kwargs) {
     $.ajax(all_kwargs);
 }
 
-var basic_query = function(url) {
-    return function(callback) {
-        do_query(url, callback);
-    };
+var basic_query = function(url, callback) {
+    do_query(url, callback);
 };
 
-var yql_query = function(yql, format) {
+var yql_query = function(yql, format, callback) {
     var kwargs = {data: {q: yql, format: format}};
-
-    return function(callback) {
-        do_query('http://query.yahooapis.com/v1/public/yql', callback, kwargs);
-    };
+    do_query('http://query.yahooapis.com/v1/public/yql', callback, kwargs);
 };
 
+var base_input = function(name, query, process, complete) {
+    var self = {};
+    
+    self.name = name;
+    self.query = query;
+    self.process = process;
+    self.complete = complete;
+    
+    self.fetch_callback = function(data) {
+        self.fetch_data = data; //may or may not be large
+        var results = self.results = process(data);
+        complete(self);
+    };
+    
+    return self;
+};
+
+var web_input = function(name, url, process, complete) {
+    var self = base_input(name, url, process, complete);
+    self.url = self.query;
+    
+    do_query(url, self.fetch_callback);
+    
+    return self;
+};
+
+var yql_input = function(name, query, process, complete) {
+    var self = base_input(name, query, process, complete);
+    
+    var kwargs = {data: {q: query, format: 'json'}};
+    do_query('http://query.yahooapis.com/v1/public/yql', callback, kwargs);
+    
+    return self;
+};
+
+var Step = require('./step.js');
 
 // One limitation on this model (easily refactored): calculators can't read from data
 // they can only write to it. Mostly this is because we don't know what will or won't
 // be present.
 
 // TODO: refactor to allow inputs without fetches. pass in DOM/global-level input data
-var make_evaluator = function(dom, rewards) {
+var make_evaluator = function(dom, rewards, callback) {
 
     var self          = {};
     var query_results = [];
-    var callbacks     = [];
+    var callbacks     = [callback];
     
-    self.article_title = dom.mw.config.get('wgTitle');
-    self.article_id    = dom.mw.config.get('wgArticleId');
+    self.article_title = article_title = dom.mw.config.get('wgTitle');
+    self.article_id    = article_id    = dom.mw.config.get('wgArticleId');
     self.revision_id   = dom.mw.config.get('wgCurRevisionId');
     self.dom           = dom; // TODO rename to document for internal use?
     self.rewards = rewards;
@@ -187,6 +218,42 @@ var make_evaluator = function(dom, rewards) {
     self.results = null;
     self.inputs  = [];
     self.failed_inputs = [];
+    
+    Step(function register_inputs() {
+        var results_group = this.group();
+    
+        // TODO these inputs could be callable objects. add a 'source' attribute to a function and add that as an input to the evaluator.
+        
+        self.add_input('editorStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=' + article_title + '&rvprop=user&rvlimit=50&format=json', results_group()), editorStats);
+        self.add_input('inLinkStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&format=json&list=backlinks&bltitle=' + article_title + '&bllimit=500&blnamespace=0', results_group()), inLinkStats);
+        self.add_input('feedbackStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&list=articlefeedback&afpageid=' + article_id + '&afuserrating=1&format=json&afanontoken=01234567890123456789012345678912', results_group()), feedbackStats);
+        self.add_input('searchStats', basic_query('http://ajax.googleapis.com/ajax/services/search/web?v=1.0&q=' + article_title, results_group()), searchStats);
+        self.add_input('newsStats', basic_query('http://ajax.googleapis.com/ajax/services/search/news?v=1.0&q=' + article_title, results_group()), newsStats);
+        self.add_input('wikitrustStats', yql_query('select * from html where url ="http://en.collaborativetrust.com/WikiTrust/RemoteAPI?method=quality&revid=' + revision_id + '"', 'json', results_group()), wikitrustStats);
+        self.add_input('grokseStats', yql_query('select * from json where url ="http://stats.grok.se/json/en/201201/' + article_title + '"', 'json'), grokseStats);
+        self.add_input('getAssessment', basic_query('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + article_title + '&rvprop=content&redirects=true&format=json', results_group()), getAssessment);
+        self.add_input('domStats', null, domStats);
+        
+        for ( i in inputs ) {
+            var save_callback = function(err, data) {
+                try {
+                    extend(self.data, input.calculate(data, self.dom));
+                    input_done(input, data, calc_scores);
+                } catch (real_err) {
+                    input_done(input, {}, calc_scores);
+                    self.failed_inputs.push(input);
+                }
+            };
+        }
+    }, function calculate_results(err, completed_inputs) {
+        // handle 'err'
+        // also manually check through the inputs
+        //    - if an input has a error set, mark it as down
+        // merge page_data
+        // call calc_scores()
+    }, function eval_complete(err) {
+        //trigger complete() listeners
+    };
     
     self.add_input = function(name, fetch, calculate) {
         // name is mostly for error messages/debugging
@@ -311,20 +378,9 @@ var make_evaluator = function(dom, rewards) {
         return result;
     };
 
-    // TODO these inputs could be callable objects. add a 'source' attribute to a function and add that as an input to the evaluator.
-    self.add_input('editorStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=' + self.article_title + '&rvprop=user&rvlimit=50&format=json'), editorStats);
-    self.add_input('inLinkStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&format=json&list=backlinks&bltitle=' + self.article_title + '&bllimit=500&blnamespace=0'), inLinkStats);
-    self.add_input('feedbackStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&list=articlefeedback&afpageid=' + self.article_id + '&afuserrating=1&format=json&afanontoken=01234567890123456789012345678912'), feedbackStats);
-    self.add_input('searchStats', basic_query('http://ajax.googleapis.com/ajax/services/search/web?v=1.0&q=' + self.article_title), searchStats);
-    self.add_input('newsStats', basic_query('http://ajax.googleapis.com/ajax/services/search/news?v=1.0&q=' + self.article_title), newsStats);
-    self.add_input('wikitrustStats', yql_query('select * from html where url ="http://en.collaborativetrust.com/WikiTrust/RemoteAPI?method=quality&revid=' + self.revision_id + '"', 'json'), wikitrustStats);
-    self.add_input('grokseStats', yql_query('select * from json where url ="http://stats.grok.se/json/en/201201/' + self.article_title + '"', 'json'), grokseStats);
-    self.add_input('getAssessment', basic_query('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + self.article_title + '&rvprop=content&redirects=true&format=json'), getAssessment);
-    self.add_input('domStats', null, domStats);
     
     return self;
 };
-
 
 function domStats(data, dom) {
     var ret = {},
@@ -348,6 +404,20 @@ function domStats(data, dom) {
     
     return ret;
 }
+domStats.type = 'yql';
+domStats.url = 'http://';
+
+inputs.push(create_yql_input('name', 'url $article_title ?sdfs', function(data) {
+
+}, input_complete));
+
+for (input in inputs) {
+    input.start(group());
+}
+
+create_sql_input('query', function(data) {
+
+});
 
 // Start calculation functions
 function editorStats(data) {
@@ -571,18 +641,16 @@ function get_category(err, kwargs) {
         });
 }
 
-var Step = require('./step.js');
-
 Step(
     function start() {
         var kwargs = {'article_title':article_title};
         console.log("Start QV on "+article_title);
-        get_article_info(null, kwargs, this.parallel()); 
+        get_article_info(null, kwargs, this.parallel()); //article title normalization?
         get_article(null, kwargs, this.parallel());
     },
     function prepare_window(err, article_info, article_content) {
         if (err) {
-            console.log('Error creating window for article "'+article_info['article_title']+'"');
+            console.log('Error retrieving info for article "'+article_info.article_title+'"');
             throw err; //return //TODO how to give up?
         }
         prepare_window_node(err, {'article_info': article_info, 'article': article_content},
@@ -590,16 +658,14 @@ Step(
     },
     function make_evaluator_wrapper(err, window) {
         if (err) {
-            console.log('dangit: '+err);
+            console.log('Could not construct window: '+err);
             throw err;
         }
-
-        var ev = make_evaluator(window, rewards);
-        ev.on_complete(this);
+        var ev = make_evaluator(window, rewards, this);
     },
     function all_done(err, evaluator) {
         if (err) {
-            console.log('dangit2: '+err);
+            console.log('Could not evaluate article: '+err);
             throw err; //return //TODO how to give up?
         }
         console.log("Done QV on "+article_title);
