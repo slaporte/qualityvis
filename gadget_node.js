@@ -151,15 +151,8 @@ function do_query(url, complete_callback, kwargs) {
     $.ajax(all_kwargs);
 }
 
-var basic_query = function(url, callback) {
-    do_query(url, callback);
-};
-
-var yql_query = function(yql, format, callback) {
-    var kwargs = {data: {q: yql, format: format}};
-    do_query('http://query.yahooapis.com/v1/public/yql', callback, kwargs);
-};
-
+// TODO configurable retry failure. at least retry in a couple seconds.
+// TODO better inheritance?
 var base_input = function(name, query, process, complete) {
     var self = {};
     
@@ -168,10 +161,22 @@ var base_input = function(name, query, process, complete) {
     self.process = process;
     self.complete = complete;
     
-    self.fetch_callback = function(data) {
+    self.fetch_callback = function(err, data) {
         self.fetch_data = data; //may or may not be large
-        var results = self.results = process(data);
-        complete(self);
+        if (err) {
+            console.log('failed '+name + ' ('+err+')');
+            complete(null, self);  // err?
+            //something messed up.
+        }
+        
+        try {
+            self.results = process(data);
+        } catch (proc_err) {
+            self.results = null;
+            self.error = 'Failed to process data for '+self.name;
+            console.log(self.error);
+        }
+        complete(null, self);
     };
     
     return self;
@@ -181,6 +186,7 @@ var web_input = function(name, url, process, complete) {
     var self = base_input(name, url, process, complete);
     self.url = self.query;
     
+    //console.log('start web query for '+name);
     do_query(url, self.fetch_callback);
     
     return self;
@@ -189,11 +195,21 @@ var web_input = function(name, url, process, complete) {
 var yql_input = function(name, query, process, complete) {
     var self = base_input(name, query, process, complete);
     
+    //console.log('start yql query for '+name);
     var kwargs = {data: {q: query, format: 'json'}};
-    do_query('http://query.yahooapis.com/v1/public/yql', callback, kwargs);
+    do_query('http://query.yahooapis.com/v1/public/yql', self.fetch_callback, kwargs);
     
     return self;
 };
+
+var dom_input = function(name, dom, process, complete) {
+    var self = {};
+    self.name = name;
+    self.process = process;
+    self.results = process(dom);
+    complete(null, self);
+    return self;
+}
 
 var Step = require('./step.js');
 
@@ -210,7 +226,7 @@ var make_evaluator = function(dom, rewards, callback) {
     
     self.article_title = article_title = dom.mw.config.get('wgTitle');
     self.article_id    = article_id    = dom.mw.config.get('wgArticleId');
-    self.revision_id   = dom.mw.config.get('wgCurRevisionId');
+    self.revision_id   = revision_id   = dom.mw.config.get('wgCurRevisionId');
     self.dom           = dom; // TODO rename to document for internal use?
     self.rewards = rewards;
     
@@ -224,62 +240,42 @@ var make_evaluator = function(dom, rewards, callback) {
     
         // TODO these inputs could be callable objects. add a 'source' attribute to a function and add that as an input to the evaluator.
         
-        self.add_input('editorStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=' + article_title + '&rvprop=user&rvlimit=50&format=json', results_group()), editorStats);
-        self.add_input('inLinkStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&format=json&list=backlinks&bltitle=' + article_title + '&bllimit=500&blnamespace=0', results_group()), inLinkStats);
-        self.add_input('feedbackStats', basic_query('http://en.wikipedia.org/w/api.php?action=query&list=articlefeedback&afpageid=' + article_id + '&afuserrating=1&format=json&afanontoken=01234567890123456789012345678912', results_group()), feedbackStats);
-        self.add_input('searchStats', basic_query('http://ajax.googleapis.com/ajax/services/search/web?v=1.0&q=' + article_title, results_group()), searchStats);
-        self.add_input('newsStats', basic_query('http://ajax.googleapis.com/ajax/services/search/news?v=1.0&q=' + article_title, results_group()), newsStats);
-        self.add_input('wikitrustStats', yql_query('select * from html where url ="http://en.collaborativetrust.com/WikiTrust/RemoteAPI?method=quality&revid=' + revision_id + '"', 'json', results_group()), wikitrustStats);
-        self.add_input('grokseStats', yql_query('select * from json where url ="http://stats.grok.se/json/en/201201/' + article_title + '"', 'json'), grokseStats);
-        self.add_input('getAssessment', basic_query('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + article_title + '&rvprop=content&redirects=true&format=json', results_group()), getAssessment);
-        self.add_input('domStats', null, domStats);
+        self.inputs.push(web_input('editorStats',    'http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=' + article_title + '&rvprop=user&rvlimit=50&format=json', editorStats, results_group()));
+        self.inputs.push(web_input('inLinkStats',    'http://en.wikipedia.org/w/api.php?action=query&format=json&list=backlinks&bltitle=' + article_title + '&bllimit=500&blnamespace=0', inLinkStats, results_group()));
+        self.inputs.push(web_input('feedbackStats',  'http://en.wikipedia.org/w/api.php?action=query&list=articlefeedback&afpageid=' + article_id + '&afuserrating=1&format=json&afanontoken=01234567890123456789012345678912', feedbackStats, results_group()));
+        self.inputs.push(web_input('searchStats',    'http://ajax.googleapis.com/ajax/services/search/web?v=1.0&q=' + article_title, searchStats, results_group()));
+        self.inputs.push(web_input('newsStats',      'http://ajax.googleapis.com/ajax/services/search/news?v=1.0&q=' + article_title, newsStats, results_group()));
+        self.inputs.push(yql_input('wikitrustStats', 'select * from html where url ="http://en.collaborativetrust.com/WikiTrust/RemoteAPI?method=quality&revid=' + revision_id + '"', wikitrustStats, results_group()));
+        self.inputs.push(yql_input('grokseStats',    'select * from json where url ="http://stats.grok.se/json/en/201201/' + article_title + '"', grokseStats, results_group()));
+        self.inputs.push(web_input('getAssessment',  'http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + article_title + '&rvprop=content&redirects=true&format=json', getAssessment, results_group()));
         
-        for ( i in inputs ) {
-            var save_callback = function(err, data) {
-                try {
-                    extend(self.data, input.calculate(data, self.dom));
-                    input_done(input, data, calc_scores);
-                } catch (real_err) {
-                    input_done(input, {}, calc_scores);
-                    self.failed_inputs.push(input);
-                }
-            };
-        }
+        self.inputs.push(dom_input('domStats', dom, domStats, results_group()));
+        
     }, function calculate_results(err, completed_inputs) {
-        // handle 'err'
-        // also manually check through the inputs
-        //    - if an input has a error set, mark it as down
-        // merge page_data
-        // call calc_scores()
-    }, function eval_complete(err) {
-        //trigger complete() listeners
-    };
-    
-    self.add_input = function(name, fetch, calculate) {
-        // name is mostly for error messages/debugging
-        // source is a callable that takes a callback
-        // calculator is a callable that takes data from source and returns results
-        var inputs = self.inputs,
-            input = {'name':name, 'fetch':fetch, 'calculate':calculate};
-        inputs.push(input);
-
-        var save_callback = function(err, data) {
-            try {
-                extend(self.data, input.calculate(data, self.dom));
-                input_done(input, data, calc_scores);
-            } catch (real_err) {
-                input_done(input, {}, calc_scores);
-                self.failed_inputs.push(input);
-            }
-        };
-        if (fetch) {
-            input.fetch(save_callback);
-        } else {
-            save_callback(null, {}); // TODO clarify
+        if (err) {
+            console.log('One or more inputs failed: ' + err);
+            //throw err;
         }
-    };
-
-    var complete_callback = function(page_data, rewards) {
+        
+        var merged_data = {};
+        for (var i = 0; i < completed_inputs.length; ++i) {
+            var cur_input = completed_inputs[i];
+            if (cur_input.error) {
+                console.log('Input failed: '+cur_input.name + ' with error: ' + cur_input.error);
+                self.failed_inputs.push(cur_input);
+            } else {
+                //console.log('Input succeeded: '+cur_input.name);
+                for (prop in cur_input.results) {
+                    merged_data[prop] = cur_input.results[prop];
+                }
+            }
+        }
+        self.data = merged_data;
+        return merged_data;
+    }, function eval_complete(err, page_data) {
+        if (err) {
+            throw err;
+        }
         var fail_count = self.failed_inputs.length;
 
         if (fail_count > 0) {
@@ -290,32 +286,13 @@ var make_evaluator = function(dom, rewards, callback) {
         for(var i=0; i < callbacks.length; ++i) {
             callbacks[i](null, self); //call all the on_complete callbacks
         }
-    };
-
+    });
+    
     self.on_complete = function(callback) {
         callbacks.push(callback);
         // if the queries are complete, we need to manually trigger callback
         if (query_results.length == self.inputs.length && self.results) {
             callback(null, self);
-        }
-    };
-
-    var input_done = function(input, data) {
-        var tmp_results = [],
-            inputs = self.inputs;
-
-        input.data = data;
-        for (var i = 0; i < inputs.length; ++i) {
-            if (inputs[i].data !== undefined) {
-                tmp_results.push(inputs[i].data);
-            }
-            // TODO add request failure handling
-        }
-
-        if (tmp_results.length == inputs.length) {
-            query_results = tmp_results;
-            console.log('all inputs done');
-            complete_callback(self.data, self.rewards);
         }
     };
 
@@ -382,7 +359,7 @@ var make_evaluator = function(dom, rewards, callback) {
     return self;
 };
 
-function domStats(data, dom) {
+function domStats(dom) {
     var ret = {},
         $   = dom.jQuery;
 
@@ -390,7 +367,7 @@ function domStats(data, dom) {
     
     ret.paragraph_count = $('.mw-content-ltr p').length;
     ret.image_count = $('img').length;
-    //ret.category_count = data.parse.categories.length -> dom.mw.config.get('categories').length;
+    ret.category_count = dom.mw.config.get('wgCategories').length;
     ret.reference_section_count = $('#References').length;
     ret.external_links_section_count = $('#External_links').length;
     ret.external_links_in_section = $('#External_links').parent().nextAll('ul').children().length;
@@ -404,20 +381,6 @@ function domStats(data, dom) {
     
     return ret;
 }
-domStats.type = 'yql';
-domStats.url = 'http://';
-
-inputs.push(create_yql_input('name', 'url $article_title ?sdfs', function(data) {
-
-}, input_complete));
-
-for (input in inputs) {
-    input.start(group());
-}
-
-create_sql_input('query', function(data) {
-
-});
 
 // Start calculation functions
 function editorStats(data) {
@@ -541,19 +504,19 @@ function getAssessment(data) {
 function print_page_stats(err, ev) {
     console.log("\nPage stats for " + ev.article_title + "\n");
     for(var stat in ev.data) {
-        console.log(stat + ': ' + ev.data[stat]);
+        console.log('  - '+stat + ': ' + ev.data[stat]);
     }
 
 
     console.log("\nResults for " + ev.article_title + "\n");
     for(var area in ev.results) {
-        console.log(area + ': ' + ev.results[area].score + '/' + ev.results[area].max);
+        console.log('  - '+area + ': ' + ev.results[area].score + '/' + ev.results[area].max);
     }
 
     console.log("\nRecommendations for " + ev.article_title + "\n");
     var recos = ev.results.recos;
     for(var attr in recos) {
-        console.log(attr + ': ' + recos[attr].cur_stat + ';' + recos[attr].points);
+        console.log('  - '+attr + ': ' + recos[attr].cur_stat + ';' + recos[attr].points);
     }
 }
 
@@ -623,56 +586,55 @@ function prepare_window_node(err, kwargs, callback) {
     });
 }
 
-function get_category(err, kwargs) {
-    do_query('http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=' + kw.name + '&prop=info&gcmlimit=' + kw.limit + '&format=json',
+function get_category(name, limit) {
+    do_query('http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=' + name + '&prop=info&gcmlimit=' + limit + '&format=json',
         function(err, data) {
-            var page_keys = keys(data.query.pages),
-                pages     = data.query.pages;
+            var pages = data.query.pages;
 
-            for(var i=0; i < page_keys.length; ++i){
-                if(pages[page_keys[i]].ns === 0) {
-                    var article_title      = pages[page_keys[i]].title.replace(/\s/g,'_'),
-                        article_id         = pages[page_keys[i]].pageid,
-                        rev_id             = pages[page_keys[i]].lastrevid;
+            for(key in pages){
+                var page = pages[key];
+                if(page.ns === 0) {
+                    var article_title = page.title.replace(/\s/g,'_'),
+                        article_id    = page.pageid,
+                        rev_id        = page.lastrevid;
 
-                    get_article(article_title, article_id, rev_id);
+                    evaluate_article_node(article_title, article_id, rev_id);
                 }
             }
         });
 }
 
-Step(
-    function start() {
-        var kwargs = {'article_title':article_title};
-        console.log("Start QV on "+article_title);
-        get_article_info(null, kwargs, this.parallel()); //article title normalization?
-        get_article(null, kwargs, this.parallel());
-    },
-    function prepare_window(err, article_info, article_content) {
-        if (err) {
-            console.log('Error retrieving info for article "'+article_info.article_title+'"');
-            throw err; //return //TODO how to give up?
+function evaluate_article_node(article_title) {
+    Step(
+        function start() {
+            var kwargs = {'article_title':article_title};
+            console.log("Start QV on "+article_title);
+            get_article_info(null, kwargs, this.parallel()); //article title normalization?
+            get_article(null, kwargs, this.parallel());
+        },
+        function prepare_window(err, article_info, article_content) {
+            if (err) {
+                console.log('Error retrieving info for article "'+article_info.article_title+'"');
+                throw err; //return //TODO how to give up?
+            }
+            prepare_window_node(err, {'article_info': article_info, 'article': article_content},
+                                this);
+        },
+        function make_evaluator_wrapper(err, window) {
+            if (err) {
+                console.log('Could not construct window: '+err);
+                throw err;
+            }
+            var ev = make_evaluator(window, rewards, this);
+        },
+        function all_done(err, evaluator) {
+            if (err) {
+                console.log('Could not evaluate article: '+err);
+                throw err; //return //TODO how to give up?
+            }
+            print_page_stats(err, evaluator);
         }
-        prepare_window_node(err, {'article_info': article_info, 'article': article_content},
-                            this);
-    },
-    function make_evaluator_wrapper(err, window) {
-        if (err) {
-            console.log('Could not construct window: '+err);
-            throw err;
-        }
-        var ev = make_evaluator(window, rewards, this);
-    },
-    function all_done(err, evaluator) {
-        if (err) {
-            console.log('Could not evaluate article: '+err);
-            throw err; //return //TODO how to give up?
-        }
-        console.log("Done QV on "+article_title);
-        print_page_stats(err, evaluator);
-    }
-);
-//var start = get_article_info;
-//start(article_title);
+    );
+}
 
-//get_category('Category:Pokémon', 5);
+get_category('Category:Pokémon', 5);
