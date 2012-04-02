@@ -21,6 +21,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+ // TODO: contextualized inputs
+ // TODO: pass in precomputed data
+ // TODO: save/replay queue?
+ 
 // if this page is on a mediawiki site, change to testing to false:
 var testing = true;
 
@@ -147,69 +151,124 @@ function do_query(url, complete_callback, kwargs) {
             all_kwargs[key] = kwargs[key];
         }
     }
-
     $.ajax(all_kwargs);
 }
 
-// TODO configurable retry failure. at least retry in a couple seconds.
-// TODO better inheritance?
-var base_input = function(name, query, process, complete) {
-    var self = {};
-    
-    self.name = name;
-    self.query = query;
-    self.process = process;
-    self.complete = complete;
-    
-    self.fetch_callback = function(err, data) {
-        self.fetch_data = data; //may or may not be large
-        if (err) {
-            console.log('failed '+name + ' ('+err+')');
-            complete(null, self);  // err?
-            //something messed up.
-        }
-        
-        try {
-            self.results = process(data);
-        } catch (proc_err) {
-            self.results = null;
-            self.error = 'Failed to process data for '+self.name;
-            console.log(self.error);
-        }
-        complete(null, self);
+function debounce(fn, delay) {
+    var timer = null;
+    return function () {
+        var context = this, args = arguments;
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+            fn.apply(context, args);
+        }, delay);
     };
-    
-    return self;
-};
+}
 
-var web_input = function(name, url, process, complete) {
-    var self = base_input(name, url, process, complete);
-    self.url = self.query;
-    
-    //console.log('start web query for '+name);
-    do_query(url, self.fetch_callback);
-    
-    return self;
-};
+function throttle(fn, delay) {
+    var timer = null;
+    return function () {
+        var context = this, args = arguments;
+        timer = setTimeout(function () {
+            fn.apply(context, args);
+        }, delay);
+    };
+}
 
-var yql_input = function(name, query, process, complete) {
-    var self = base_input(name, query, process, complete);
-    
-    //console.log('start yql query for '+name);
-    var kwargs = {data: {q: query, format: 'json'}};
-    do_query('http://query.yahooapis.com/v1/public/yql', self.fetch_callback, kwargs);
-    
-    return self;
-};
-
-var dom_input = function(name, dom, process, complete) {
+// TODO: register/save function?
+var queue = function(delay) {
+    delay = delay || 250;
     var self = {};
-    self.name = name;
-    self.process = process;
-    self.results = process(dom);
-    complete(null, self);
+    var process, timer;
+    self.pending = [];
+    self.enqueue = function(func, callback) {
+        self.pending.push({'func':func, 'callback':callback});
+        //console.log('enqueueing an n');
+        self.start();
+    };
+    self.stop = function() {
+        //console.log('stopped');
+        clearTimeout(timer);
+        timer = null;
+    };
+    self.start = function() {
+        if (!timer) {
+            //console.log('started');
+            timer = setInterval(process, delay);
+            process();
+        }
+    };
+    process = function process_task() {
+        //console.log('attempting to process...');
+        if(self.pending.length > 0) {
+            var n = self.pending.pop();
+            //console.log('doin an n');
+            var retry = function retry() {
+                self.enqueue(n.func, n.callback);
+            };
+            n.func(n.callback, retry);
+        } else {
+            self.stop();
+        }
+    };
+    return self;
+};
+
+// TODO configurable retry failure. at least retry in a couple seconds.
+// complete is called on the input actually completely finishing (success/fatal error)
+// ind_complete is called for an individual call's completion (retry)
+var input = function(name, fetch, process) {
+    var self;
+    self = function(complete, retry) {
+        //console.log('Calling into input: '+name);
+        var fetch_callback = function fetch_callback(err, data) {
+            self.fetch_data = data; //may or may not be large
+            if (err) {
+                console.log('failed fetch on: '+name+' '+err)
+                self.error = 'Failed to fetch data for '+name;
+                complete(null, self);  // err?
+            }
+            
+            try {
+                self.results = process(data);
+            } catch (proc_err) {
+                self.results = null;
+                self.error = 'Failed to process data for '+name;
+                console.log(self.error);
+            }
+            complete(null, self);
+        };
+        
+        if (fetch instanceof Function) {
+            fetch(fetch_callback);
+        } else {
+            fetch_callback(null, fetch);
+        }
+    };
+    self.name     = name;
+    self.attempts = 0;
+    
     return self;
 }
+
+var web_source = function(url) {
+    var self = function fetch_web_source(callback) {
+        //console.log('start web query for '+name);
+        do_query(url, callback);
+    }
+    self.get_url = function get_url() {
+        return url;
+    }
+    return self;
+};
+
+var yql_source = function(query) {
+    return function fetch_yql_source(callback) {
+        //console.log('start yql query for '+name);
+        var kwargs = {data: {q: query, format: 'json'}};
+        do_query('http://query.yahooapis.com/v1/public/yql', callback, kwargs);
+    }
+};
 
 var Step = require('./step.js');
 
@@ -218,7 +277,7 @@ var Step = require('./step.js');
 // be present.
 
 // TODO: refactor to allow inputs without fetches. pass in DOM/global-level input data
-var make_evaluator = function(dom, rewards, callback) {
+var make_evaluator = function(dom, rewards, callback, mq) {
 
     var self          = {};
     var query_results = [];
@@ -232,36 +291,39 @@ var make_evaluator = function(dom, rewards, callback) {
     
     self.data    = {};
     self.results = null;
-    self.inputs  = [];
     self.failed_inputs = [];
     
     Step(function register_inputs() {
         var results_group = this.group();
-    
-        // TODO these inputs could be callable objects. add a 'source' attribute to a function and add that as an input to the evaluator.
+        self.inputs  = [
+             input('editorStats', web_source('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=' + article_title + '&rvprop=user&rvlimit=50&format=json'), editorStats)
+            ,input('inLinkStats', web_source('http://en.wikipedia.org/w/api.php?action=query&format=json&list=backlinks&bltitle=' + article_title + '&bllimit=500&blnamespace=0'), inLinkStats)
+            ,input('feedbackStats', web_source('http://en.wikipedia.org/w/api.php?action=query&list=articlefeedback&afpageid=' + article_id + '&afuserrating=1&format=json&afanontoken=01234567890123456789012345678912'), feedbackStats)
+            ,input('searchStats', web_source('http://ajax.googleapis.com/ajax/services/search/web?v=1.0&q=' + article_title), searchStats)
+            ,input('newsStats',  web_source('http://ajax.googleapis.com/ajax/services/search/news?v=1.0&q=' + article_title), newsStats)
+            ,input('wikitrustStats', yql_source('select * from html where url ="http://en.collaborativetrust.com/WikiTrust/RemoteAPI?method=quality&revid=' + revision_id + '"'), wikitrustStats)
+            ,input('grokseStats', yql_source('select * from json where url ="http://stats.grok.se/json/en/201201/' + article_title + '"'), grokseStats)
+            ,input('getAssessment', web_source('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + article_title + '&rvprop=content&redirects=true&format=json'), getAssessment)
+            
+            ,input('domStats', dom, domStats)
+        ];
         
-        self.inputs.push(web_input('editorStats',    'http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=' + article_title + '&rvprop=user&rvlimit=50&format=json', editorStats, results_group()));
-        self.inputs.push(web_input('inLinkStats',    'http://en.wikipedia.org/w/api.php?action=query&format=json&list=backlinks&bltitle=' + article_title + '&bllimit=500&blnamespace=0', inLinkStats, results_group()));
-        self.inputs.push(web_input('feedbackStats',  'http://en.wikipedia.org/w/api.php?action=query&list=articlefeedback&afpageid=' + article_id + '&afuserrating=1&format=json&afanontoken=01234567890123456789012345678912', feedbackStats, results_group()));
-        self.inputs.push(web_input('searchStats',    'http://ajax.googleapis.com/ajax/services/search/web?v=1.0&q=' + article_title, searchStats, results_group()));
-        self.inputs.push(web_input('newsStats',      'http://ajax.googleapis.com/ajax/services/search/news?v=1.0&q=' + article_title, newsStats, results_group()));
-        self.inputs.push(yql_input('wikitrustStats', 'select * from html where url ="http://en.collaborativetrust.com/WikiTrust/RemoteAPI?method=quality&revid=' + revision_id + '"', wikitrustStats, results_group()));
-        self.inputs.push(yql_input('grokseStats',    'select * from json where url ="http://stats.grok.se/json/en/201201/' + article_title + '"', grokseStats, results_group()));
-        self.inputs.push(web_input('getAssessment',  'http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + article_title + '&rvprop=content&redirects=true&format=json', getAssessment, results_group()));
-        
-        self.inputs.push(dom_input('domStats', dom, domStats, results_group()));
+        for(var i=0; i<self.inputs.length; ++i) {
+            mq.enqueue(self.inputs[i], results_group());
+            //self.inputs[i]();
+        }
         
     }, function calculate_results(err, completed_inputs) {
         if (err) {
             console.log('One or more inputs failed: ' + err);
-            //throw err;
+            throw err;
         }
         
         var merged_data = {};
         for (var i = 0; i < completed_inputs.length; ++i) {
             var cur_input = completed_inputs[i];
             if (cur_input.error) {
-                console.log('Input failed: '+cur_input.name + ' with error: ' + cur_input.error);
+                console.log('Input failed: '+ cur_input.name + ' with error: ' + cur_input.error);
                 self.failed_inputs.push(cur_input);
             } else {
                 //console.log('Input succeeded: '+cur_input.name);
@@ -367,13 +429,14 @@ function domStats(dom) {
     
     ret.paragraph_count = $('.mw-content-ltr p').length;
     ret.image_count = $('img').length;
-    ret.category_count = dom.mw.config.get('wgCategories').length;
+    //ret.category_count = dom.mw.config.get('wgCategories').length;
     ret.reference_section_count = $('#References').length;
     ret.external_links_section_count = $('#External_links').length;
     ret.external_links_in_section = $('#External_links').parent().nextAll('ul').children().length;
     //ret.external_links_total = data.parse.externallinks.length;
     //ret.internal_links = data.parse.links.length;
     ret.intro_p_count =  $('.mw-content-ltr p').length;
+    ret.p_count = $('p').length;
     
     ret.ref_needed_count = $('span:contains("citation")').length;
     ret.pov_statement_count = $('span:contains("neutrality")').length;
@@ -410,12 +473,15 @@ function inLinkStats(data) {
     ret.incoming_links = data.query.backlinks.length;
     return ret;
 }
-
+    
 function feedbackStats(data) {
     var ret = {};
-
-    var ratings     = data.query.articlefeedback[0].ratings,
-        trustworthy = ratings[0],
+    
+    var ratings     = data.query.articlefeedback[0].ratings;
+    if (!ratings) {
+        return ret;
+    }
+    var trustworthy = ratings[0],
         objective   = ratings[1],
         complete    = ratings[2],
         wellwritten = ratings[3];
@@ -442,7 +508,11 @@ function newsStats(data) {
 
 function wikitrustStats(data) {
     var ret = {};
-    ret.wikitrust = parseFloat(data.query.results.body.p);
+    var res = data.query.results.body.p;
+    var success = !(res.indexOf('EERROR') == 0);
+    if (success) {
+        ret.wikitrust = parseFloat(res)
+    }
     return ret;
 }
 
@@ -501,25 +571,6 @@ function getAssessment(data) {
 
 // End calculation functions
 
-function print_page_stats(err, ev) {
-    console.log("\nPage stats for " + ev.article_title + "\n");
-    for(var stat in ev.data) {
-        console.log('  - '+stat + ': ' + ev.data[stat]);
-    }
-
-
-    console.log("\nResults for " + ev.article_title + "\n");
-    for(var area in ev.results) {
-        console.log('  - '+area + ': ' + ev.results[area].score + '/' + ev.results[area].max);
-    }
-
-    console.log("\nRecommendations for " + ev.article_title + "\n");
-    var recos = ev.results.recos;
-    for(var attr in recos) {
-        console.log('  - '+attr + ': ' + recos[attr].cur_stat + ';' + recos[attr].points);
-    }
-}
-
 function get_article_info(err, kwargs, callback) {
     var article_title = kwargs.article_title;
     
@@ -559,7 +610,7 @@ function prepare_window_node(err, kwargs, callback) {
         article             = kwargs.article,
         article_title       = article_info.article_title,
         article_id          = article_info.article_id,
-        revision_id         = article_info.article_title,
+        revision_id         = article_info.rev_id,
         text                = article.parse.text['*'];
     
     var jsdom = require('jsdom');
@@ -587,29 +638,146 @@ function prepare_window_node(err, kwargs, callback) {
 }
 
 function get_category(name, limit) {
-    do_query('http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=' + name + '&prop=info&gcmlimit=' + limit + '&format=json',
-        function(err, data) {
+    console.log('getting up to '+limit+' articles for '+name);
+    Step( function get_article_names() {
+        do_query('http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=' + name + '&prop=info&gcmlimit=' + limit + '&format=json',
+            this);
+        }, function evaluate_articles(err, data) {
+            if (err) {
+                console.log('Could not retrieve category list: '+name+'.');
+                throw err;
+            }
+            console.log('did the category query');
             var pages = data.query.pages;
-
+            var infos = [];
             for(key in pages){
                 var page = pages[key];
                 if(page.ns === 0) {
-                    var article_title = page.title.replace(/\s/g,'_'),
-                        article_id    = page.pageid,
-                        rev_id        = page.lastrevid;
-
-                    evaluate_article_node(article_title, article_id, rev_id);
+                    infos.push({'article_title': page.title.replace(/\s/g,'_'),
+                                'article_id'   : page.pageid,
+                                'rev_id'       : page.lastrevid
+                                });
                 }
             }
+            console.log(infos.length + ' infos got.');
+            var articles_group = this.group();
+            for (var i=0; i < infos.length; ++i) {
+                var article_title = infos[i].article_title,
+                    article_id    = infos[i].article_id,
+                    rev_id        = infos[i].rev_id;
+                evaluate_article_node(article_title, article_id, rev_id, articles_group());
+            }
+        }, function output_evaluations(err, evs) {
+            if (err) {
+                throw err;
+            }
+            output_csv('yup.csv', evs);
         });
 }
 
-function evaluate_article_node(article_title) {
+function print_page_stats(err, ev) {
+    console.log("\nPage stats for " + ev.article_title + "\n");
+    for(var stat in ev.data) {
+        console.log('  - '+stat + ': ' + ev.data[stat]);
+    }
+
+
+    console.log("\nResults for " + ev.article_title + "\n");
+    for(var area in ev.results) {
+        console.log('  - '+area + ': ' + ev.results[area].score + '/' + ev.results[area].max);
+    }
+
+    console.log("\nRecommendations for " + ev.article_title + "\n");
+    var recos = ev.results.recos;
+    for(var attr in recos) {
+        console.log('  - '+attr + ': ' + recos[attr].cur_stat + ';' + recos[attr].points);
+    }
+}
+
+var mq = queue(50);
+
+var evaluators = [];
+
+function escape_field(str) {
+    return str;
+}
+
+function is_outputtable(val) {
+    var val_type = typeof val;
+    return !(val_type === 'function' || val_type === 'object');
+}
+
+var article_deets = ['article_title', 'article_id', 'revision_id'];
+function output_csv(path, evs, callback) {
+    //TODO: add run date, other metadata in csv comment
+    //TODO: use async?
+    //construct superset of stats for column headings
+    var col_names, tmp_names = {};
+    for (var i=0; i<evs.length; ++i) {
+        var ev = evs[i];
+        for (var stat in ev.data) {
+            tmp_names[stat] = true;
+        }
+    }
+    for (var i=0; i<tmp_names.length; ++i) {
+        var do_output = false;
+        var stat = tmp_names[i];
+        for (var j=0; i<evs.length; ++i) {
+            var ev = evs[j];
+            if (is_outputtable(ev[stat])) {
+                do_output = true;
+            }
+        }
+        if (!do_output) {
+            delete tmp_names[stat];
+        }
+    }
+    var col_names = [];
+    col_names.push.apply(col_names, article_deets);
+    col_names.push.apply(col_names, keys(tmp_names).sort());
+    
+    var fs       = require('fs');
+    var out_file = fs.createWriteStream(path, {'flags': 'w'});
+    if (typeof out_file.setEncoding === 'function') {
+        out_file.setEncoding('utf-8');
+    }
+    
+    out_file.write(col_names.join(','));
+    out_file.write('\n');
+    for (var i=0; i<evs.length; ++i) {
+        var ev = evs[i];
+        for (var j=0; j<col_names.length; ++j) {
+            var col_name = col_names[j];
+            var cur_stat = ev.data[col_name] || ev[col_name];
+            var to_write = cur_stat ? escape_field(cur_stat) : '';
+            if (is_outputtable(cur_stat)) {
+                out_file.write(to_write);
+            } else {
+                out_file.write('(object)');
+            }
+            out_file.write(',');
+        }
+        out_file.write('\n');
+    }
+    out_file.destroySoon();
+    //callback();
+}
+
+function evaluate_article_node(article_title, article_id, rev_id, callback) {
     Step(
         function start() {
             var kwargs = {'article_title':article_title};
             console.log("Start QV on "+article_title);
-            get_article_info(null, kwargs, this.parallel()); //article title normalization?
+            
+            var info_callback = this.parallel();
+            if (!article_id || !rev_id) {
+                get_article_info(null, kwargs, info_callback); //article title normalization?
+            } else {
+                info_callback(null, { 'article_title': article_title,
+                                    'article_id'   : article_id,
+                                    'rev_id'       : rev_id
+                                  });
+            }
             get_article(null, kwargs, this.parallel());
         },
         function prepare_window(err, article_info, article_content) {
@@ -625,16 +793,20 @@ function evaluate_article_node(article_title) {
                 console.log('Could not construct window: '+err);
                 throw err;
             }
-            var ev = make_evaluator(window, rewards, this);
+            var ev = make_evaluator(window, rewards, this, mq);
         },
         function all_done(err, evaluator) {
             if (err) {
                 console.log('Could not evaluate article: '+err);
                 throw err; //return //TODO how to give up?
             }
-            print_page_stats(err, evaluator);
+            console.log('finished '+evaluator.article_title);
+            //print_page_stats(err, evaluator);
+            if (callback) {
+                callback(null, evaluator);
+            }
         }
     );
 }
-
-get_category('Category:Pokémon', 5);
+//get_category('Category:FA-Class_articles', 50);
+get_category('Category:Featured_articles', 10);
