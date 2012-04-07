@@ -224,7 +224,7 @@ var input = function(name, fetch, process) {
         var fetch_callback = function fetch_callback(err, data) {
             self.fetch_data = data; //may or may not be large
             if (err) {
-                console.log('failed fetch on: '+name+' '+err)
+                console.log('failed fetch on: '+name+' '+err);
                 self.error = 'Failed to fetch data for '+name;
                 complete(null, self);  // err?
             }
@@ -249,16 +249,16 @@ var input = function(name, fetch, process) {
     self.attempts = 0;
     
     return self;
-}
+};
 
 var web_source = function(url) {
     var self = function fetch_web_source(callback) {
         //console.log('start web query for '+name);
         do_query(url, callback);
-    }
+    };
     self.get_url = function get_url() {
         return url;
-    }
+    };
     return self;
 };
 
@@ -267,7 +267,7 @@ var yql_source = function(query) {
         //console.log('start yql query for '+name);
         var kwargs = {data: {q: query, format: 'json'}};
         do_query('http://query.yahooapis.com/v1/public/yql', callback, kwargs);
-    }
+    };
 };
 
 var Step = require('./step.js');
@@ -327,7 +327,7 @@ var make_evaluator = function(dom, rewards, callback, mq) {
                 self.failed_inputs.push(cur_input);
             } else {
                 //console.log('Input succeeded: '+cur_input.name);
-                for (prop in cur_input.results) {
+                for (var prop in cur_input.results) {
                     merged_data[prop] = cur_input.results[prop];
                 }
             }
@@ -425,9 +425,14 @@ function domStats(dom) {
     var ret = {},
         $   = dom.jQuery;
 
-    ret.ref_count = $('.reference').length;
-    
-    ret.paragraph_count = $('.mw-content-ltr p').length;
+    ret.ref_count = $('.reference').length; /* includes both references and notes */
+    ret.source_count = $('li[id^="cite_note"]').length; /* includes both references and notes */
+    ret.word_count = $('p').text().split(/\b[\s,\.-:;]*/).length;
+    ret.paragraph_count = $('p').length;
+    ret.paragraph_counts = [];
+    $('p').each(function() {
+        ret.paragraph_counts.push($(this).text().split(/\b[\s,\.-:;]*/).length);
+    });
     ret.image_count = $('img').length;
     //ret.category_count = dom.mw.config.get('wgCategories').length;
     ret.reference_section_count = $('#References').length;
@@ -435,13 +440,64 @@ function domStats(dom) {
     ret.external_links_in_section = $('#External_links').parent().nextAll('ul').children().length;
     //ret.external_links_total = data.parse.externallinks.length;
     //ret.internal_links = data.parse.links.length;
-    ret.intro_p_count =  $('.mw-content-ltr p').length;
+    ret.intro_p_count =  $('p').length;
     ret.p_count = $('p').length;
-    
+    ret.new_internal_link_count = $('.new');
     ret.ref_needed_count = $('span:contains("citation")').length;
     ret.pov_statement_count = $('span:contains("neutrality")').length;
     ret.pov_statement_count = $('span:contains("neutrality")').length;
-    
+    ret.dom_internal_link_count = $('p a:not([class])[href^="/wiki/"]').length;
+    ret.first_head_count = $('h2').length;
+    ret.second_head_count = $('h3').length;
+    ret.links = [];
+    $('p a:not([class])[href^="/wiki/"]').each(function() {
+        ret.links.push($(this).text());
+    });
+    ret.dom_category_count = $("a[href^='/wiki/Category:']").length;
+
+    /* templates will (most likely) be 0 or 1 */
+    ret.templ_delete = $('.ambox-delete').length;
+    ret.templ_autobiography = $('.ambox-autobiography').length; // Template:Autobiography
+    ret.templ_advert = $('.ambox-Advert').length; // Template:Advert
+    ret.templ_citation_style = $('.ambox-citation_style').length; // Template:Citation style
+    ret.templ_cleanup = $('.ambox-Cleanup').length;
+    ret.templ_COI = $('.ambox-COI').length;
+    ret.templ_confusing = $('.ambox-confusing').length;
+    ret.templ_context = $('.ambox-Context').length;
+    ret.templ_copy_edit = $('.ambox-Copy_edit').length;
+    ret.templ_dead_end = $('.ambox-dead_end').length;
+    ret.templ_disputed = $('.ambox-disputed').length;
+    ret.templ_essay_like = $('.ambox-essay-like').length;
+    ret.templ_expert = $("td:contains('needs attention from an expert')").length; // Template:Expert
+    ret.templ_fansight = $('td:contains("fan\'s point of view")').length;
+    ret.templ_globalize = $('td:contains("do not represent a worldwide view")').length;
+    ret.templ_hoax = $('td:contains("hoax")').length;
+    ret.templ_in_universe = $('.ambox-in-universe').length;
+    ret.templ_intro_rewrite = $('.ambox-lead_rewrite').length;
+    ret.templ_merge = $('td:contains("suggested that this article or section be merged")').length;
+    ret.templ_no_footnotes = $('.ambox-No_footnotes').length;
+    ret.templ_howto = $('td:contains("contains instructions, advice, or how-to content")').length;
+    ret.templ_non_free = $('.ambox-non-free').length;
+    ret.templ_notability = $('.ambox-Notability').length;
+    ret.templ_not_english = $('.ambox-not_English').length;
+    ret.templ_NPOV = $('.ambox-POV').length;
+    ret.templ_original_research = $('.ambox-Original_research').length;
+    ret.templ_orphan = $('.ambox-Orphan').length;
+    ret.templ_plot = $('.ambox-Plot').length;
+    ret.templ_primary_sources = $('.ambox-Primary_sources').length;
+    ret.templ_prose = $('.ambox-Prose').length;
+    ret.templ_refimprove = $('.ambox-Refimprove').length;
+    ret.templ_sections = $('.ambox-sections').length;
+    ret.templ_tone = $('.ambox-Tone').length;
+    ret.templ_tooshort = $('.ambox-lead_too_short').length;
+    ret.templ_style = $('.ambox-style').length;
+    ret.templ_uncategorized = $('.ambox-uncategorized').length;
+    ret.templ_update = $('.ambox-Update').length;
+    ret.templ_wikify = $('.ambox-Wikify').length;
+
+    /* may return 0+ (more = worse) */
+    ret.templ_multiple_issues = $('.ambox-multiple_issues li').length;
+
     return ret;
 }
 
@@ -586,8 +642,8 @@ function get_article_info(err, kwargs, callback) {
                     article_title = pages[article_id].title.replace(' ', '_');
                     rev_id        = pages[article_id].revisions[0].revid;
                     prev_rev_id   = pages[article_id].revisions[0].parentid;
-                callback(null, {'article_title':article_title, 
-                              'article_id':article_id, 
+                callback(null, {'article_title':article_title,
+                              'article_id':article_id,
                               'rev_id': rev_id});
                 
             } else {
@@ -650,7 +706,7 @@ function get_category(name, limit) {
             console.log('did the category query');
             var pages = data.query.pages;
             var infos = [];
-            for(key in pages){
+            for(var key in pages){
                 var page = pages[key];
                 if(page.ns === 0) {
                     infos.push({'article_title': page.title.replace(/\s/g,'_'),
@@ -669,9 +725,10 @@ function get_category(name, limit) {
             }
         }, function output_evaluations(err, evs) {
             if (err) {
-                throw err;
+                throw err
             }
-            output_csv('yup.csv', evs);
+            //output_csv('yup.csv', evs);
+            console.log(evs);
         });
 }
 
@@ -809,4 +866,4 @@ function evaluate_article_node(article_title, article_id, rev_id, callback) {
     );
 }
 //get_category('Category:FA-Class_articles', 50);
-get_category('Category:Featured_articles', 10);
+get_category('Category:Articles_with_inconsistent_citation_formats', 2);
