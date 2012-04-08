@@ -45,7 +45,8 @@ var Step = require('./step.js');
 if(testing === true) {
     var article_title = 'Charizard';
     
-    get_category('Category:Featured_articles', 100);
+    get_category('Category:Featured_articles', 5);
+    //get_category('Category:Articles_with_inconsistent_citation_formats', 2);
     //get_category('Category:FA-Class_articles', 50);
 } else {
     var article_title = mw.config.get('wgTitle');
@@ -71,7 +72,7 @@ function rangeStat(start, end, max_score) {
  */
 var rewards = {
     'vetted': {
-        'unique_authors'        : overStat(20, 40, 200),
+        'total_editors'        : overStat(20, 40, 200),
         'paragraph_count'       : rangeStat(10, 30, 100),
         'wikitrust'             : underStat(0.6, 0.45, 600)
     },
@@ -98,7 +99,7 @@ var rewards = {
     },
     //rewards.integrated.read_more_section = ;
     'community': {
-        'unique_authors'        : overStat(20, 40, 100),
+        'total_editors'        : overStat(20, 40, 100),
         'fbTrustworthy'         : overStat(3, 3.5, 100),
         'fbObjective'           : overStat(3, 3.5, 100),
         'fbComplete'            : overStat(3, 3.5, 100),
@@ -270,7 +271,7 @@ var input = function(name, fetch_or_data, process) {
         var fetch_callback = function fetch_callback(err, data) {
             self.fetch_data = data; //may or may not be large
             if (err) {
-                console.log('failed fetch on: '+name+' '+err)
+                console.log('failed fetch on: '+name+' '+err);
                 self.error = 'Failed to fetch data for '+name;
                 if (self.attempts < 3) {
                     retry();
@@ -311,7 +312,7 @@ var input = function(name, fetch_or_data, process) {
     self.attempts = 0;
     
     return self;
-}
+};
 
 // One limitation on this model (easily refactored): calculators can't read from data
 // they can only write to it. Mostly this is because we don't know what will or won't
@@ -337,16 +338,16 @@ var make_evaluator = function(dom, rewards, callback, mq) {
     Step(function register_inputs() {
         var results_group = this.group();
         self.inputs  = [
-             input('editorStats', web_source('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=' + article_title + '&rvprop=user&rvlimit=50&format=json'), editorStats)
-            ,input('inLinkStats', web_source('http://en.wikipedia.org/w/api.php?action=query&format=json&list=backlinks&bltitle=' + article_title + '&bllimit=500&blnamespace=0'), inLinkStats)
+            input('inLinkStats', web_source('http://en.wikipedia.org/w/api.php?action=query&format=json&list=backlinks&bltitle=' + article_title + '&bllimit=500&blnamespace=0'), inLinkStats)
             ,input('feedbackStats', web_source('http://en.wikipedia.org/w/api.php?action=query&list=articlefeedback&afpageid=' + article_id + '&afuserrating=1&format=json&afanontoken=01234567890123456789012345678912'), feedbackStats)
             ,input('searchStats', web_source('http://ajax.googleapis.com/ajax/services/search/web?v=1.0&q=' + article_title), searchStats)
             ,input('newsStats',  web_source('http://ajax.googleapis.com/ajax/services/search/news?v=1.0&q=' + article_title), newsStats)
             ,input('wikitrustStats', yql_source('select * from html where url ="http://en.collaborativetrust.com/WikiTrust/RemoteAPI?method=quality&revid=' + revision_id + '"'), wikitrustStats)
             ,input('grokseStats', yql_source('select * from json where url ="http://stats.grok.se/json/en/201201/' + article_title + '"'), grokseStats)
             ,input('getAssessment', web_source('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + article_title + '&rvprop=content&redirects=true&format=json'), getAssessment)
-            
             ,input('domStats', dom, domStats)
+            ,input('bingWebStats', web_source('http://api.bing.net/json.aspx?Appid=202F17E764089C60340ACA3FBBC558453354DA76&query=' + article_title  +  '&web.count=1&news.count=1&sources=web+news'), bingWebStats)
+            ,input('revisionStats', web_source('http://ortelius.toolserver.org:8088/revisions/' + article_title), revisionStats)
         ];
         
         for(var i=0; i<self.inputs.length; ++i) {
@@ -368,7 +369,7 @@ var make_evaluator = function(dom, rewards, callback, mq) {
                 self.failed_inputs.push(cur_input);
             } else {
                 //console.log('Input succeeded: '+cur_input.name);
-                for (prop in cur_input.results) {
+                for (var prop in cur_input.results) {
                     merged_data[prop] = cur_input.results[prop];
                 }
             }
@@ -466,9 +467,14 @@ function domStats(dom) {
     var ret = {},
         $   = dom.jQuery;
 
-    ret.ref_count = $('.reference').length;
-    
-    ret.paragraph_count = $('.mw-content-ltr p').length;
+    ret.ref_count = $('.reference').length; /* includes both references and notes */
+    ret.source_count = $('li[id^="cite_note"]').length; /* includes both references and notes */
+    ret.word_count = $('p').text().split(/\b[\s,\.-:;]*/).length;
+    ret.paragraph_count = $('p').length;
+    ret.paragraph_counts = [];
+    $('p').each(function() {
+        ret.paragraph_counts.push($(this).text().split(/\b[\s,\.-:;]*/).length);
+    });
     ret.image_count = $('img').length;
     //ret.category_count = dom.mw.config.get('wgCategories').length;
     ret.reference_section_count = $('#References').length;
@@ -476,37 +482,80 @@ function domStats(dom) {
     ret.external_links_in_section = $('#External_links').parent().nextAll('ul').children().length;
     //ret.external_links_total = data.parse.externallinks.length;
     //ret.internal_links = data.parse.links.length;
-    ret.intro_p_count =  $('.mw-content-ltr p').length;
+    ret.intro_p_count =  $('p').length;
     ret.p_count = $('p').length;
-    
+    ret.new_internal_link_count = $('.new');
     ret.ref_needed_count = $('span:contains("citation")').length;
     ret.pov_statement_count = $('span:contains("neutrality")').length;
     ret.pov_statement_count = $('span:contains("neutrality")').length;
-    
+    ret.dom_internal_link_count = $('p a:not([class])[href^="/wiki/"]').length;
+    ret.first_head_count = $('h2').length;
+    ret.second_head_count = $('h3').length;
+    ret.links = [];
+    $('p a:not([class])[href^="/wiki/"]').each(function() {
+        ret.links.push($(this).text());
+    });
+    ret.dom_category_count = $("a[href^='/wiki/Category:']").length;
+
+    /* templates will (most likely) be 0 or 1 */
+    ret.templ_delete = $('.ambox-delete').length;
+    ret.templ_autobiography = $('.ambox-autobiography').length; // Template:Autobiography
+    ret.templ_advert = $('.ambox-Advert').length; // Template:Advert
+    ret.templ_citation_style = $('.ambox-citation_style').length; // Template:Citation style
+    ret.templ_cleanup = $('.ambox-Cleanup').length;
+    ret.templ_COI = $('.ambox-COI').length;
+    ret.templ_confusing = $('.ambox-confusing').length;
+    ret.templ_context = $('.ambox-Context').length;
+    ret.templ_copy_edit = $('.ambox-Copy_edit').length;
+    ret.templ_dead_end = $('.ambox-dead_end').length;
+    ret.templ_disputed = $('.ambox-disputed').length;
+    ret.templ_essay_like = $('.ambox-essay-like').length;
+    ret.templ_expert = $("td:contains('needs attention from an expert')").length; // Template:Expert
+    ret.templ_fansight = $('td:contains("fan\'s point of view")').length;
+    ret.templ_globalize = $('td:contains("do not represent a worldwide view")').length;
+    ret.templ_hoax = $('td:contains("hoax")').length;
+    ret.templ_in_universe = $('.ambox-in-universe').length;
+    ret.templ_intro_rewrite = $('.ambox-lead_rewrite').length;
+    ret.templ_merge = $('td:contains("suggested that this article or section be merged")').length;
+    ret.templ_no_footnotes = $('.ambox-No_footnotes').length;
+    ret.templ_howto = $('td:contains("contains instructions, advice, or how-to content")').length;
+    ret.templ_non_free = $('.ambox-non-free').length;
+    ret.templ_notability = $('.ambox-Notability').length;
+    ret.templ_not_english = $('.ambox-not_English').length;
+    ret.templ_NPOV = $('.ambox-POV').length;
+    ret.templ_original_research = $('.ambox-Original_research').length;
+    ret.templ_orphan = $('.ambox-Orphan').length;
+    ret.templ_plot = $('.ambox-Plot').length;
+    ret.templ_primary_sources = $('.ambox-Primary_sources').length;
+    ret.templ_prose = $('.ambox-Prose').length;
+    ret.templ_refimprove = $('.ambox-Refimprove').length;
+    ret.templ_sections = $('.ambox-sections').length;
+    ret.templ_tone = $('.ambox-Tone').length;
+    ret.templ_tooshort = $('.ambox-lead_too_short').length;
+    ret.templ_style = $('.ambox-style').length;
+    ret.templ_uncategorized = $('.ambox-uncategorized').length;
+    ret.templ_update = $('.ambox-Update').length;
+    ret.templ_wikify = $('.ambox-Wikify').length;
+
+    /* may return 0+ (more = worse) */
+    ret.templ_multiple_issues = $('.ambox-multiple_issues li').length;
+
     return ret;
+}
+
+function bingWebStats(data) {
+    ret = {};
+    ret.bing_news_results = data.SearchResponse.News.Total;
+    ret.bing_web_results = data.SearchResponse.Web.Total;
+    return ret;
+}
+
+function revisionStats(data) {
+    ret = {};
+    return data;
 }
 
 // Start calculation functions
-function editorStats(data) {
-    var ret = {};
-    for(var id in data.query.pages) {
-        if(!data.query.pages.hasOwnProperty(id)) {
-        continue;
-        }
-        var author_counts = {};
-        var editor_count = data.query.pages[id].revisions;
-        for(var i = 0; i < editor_count.length; i++) {
-            if(!author_counts[editor_count[i].user]) {
-                    author_counts[editor_count[i].user] = 0;
-            }
-            author_counts[editor_count[i].user] += 1;
-        }
-        ret.author_counts = author_counts;
-    }
-    ret.unique_authors = keys(ret.author_counts).length;
-
-    return ret;
-}
 
 function inLinkStats(data) {
     //TODO: if there are 500 backlinks, we need to make another query
@@ -661,8 +710,9 @@ function get_category(name, limit) {
             console.log('did the category query');
             var pages = data.query.pages;
             var infos = [];
+
             console.log(keys(pages).length + ' total pages got.');
-            for(key in pages){
+            for(var key in pages){
                 var page = pages[key];
                 if(page.ns === 0) {
                     infos.push({'article_title': page.title.replace(/\s/g,'_'),
@@ -681,8 +731,9 @@ function get_category(name, limit) {
             }
         }, function output_evaluations(err, evs) {
             if (err) {
-                throw err;
+                throw err
             }
+            
             var filename = 'output_'+(new Date()).valueOf()+'.csv';
             output_csv(filename, evs);
         });
