@@ -304,8 +304,8 @@ var make_evaluator = function(dom, rewards, callback, mq) {
             ,input('wikitrustStats', yql_source('select * from html where url ="http://en.collaborativetrust.com/WikiTrust/RemoteAPI?method=quality&revid=' + revision_id + '"'), wikitrustStats)
             ,input('grokseStats', yql_source('select * from json where url ="http://stats.grok.se/json/en/201201/' + article_title + '"'), grokseStats)
             ,input('getAssessment', web_source('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + article_title + '&rvprop=content&redirects=true&format=json'), getAssessment)
-            
             ,input('domStats', dom, domStats)
+            ,input('bingWebStats', web_source('http://api.bing.net/json.aspx?Appid=202F17E764089C60340ACA3FBBC558453354DA76&query=' + article_title  +  '&web.count=1&news.count=1&sources=web+news'), bingWebStats)
         ];
         
         for(var i=0; i<self.inputs.length; ++i) {
@@ -498,6 +498,13 @@ function domStats(dom) {
     /* may return 0+ (more = worse) */
     ret.templ_multiple_issues = $('.ambox-multiple_issues li').length;
 
+    return ret;
+}
+
+function bingWebStats(data) {
+    ret = {}
+    ret.bing_news_results = data.SearchResponse.News.Total;
+    ret.bing_web_results = data.SearchResponse.Web.Total;
     return ret;
 }
 
