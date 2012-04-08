@@ -57,7 +57,7 @@ function rangeStat(start, end, max_score) {
  */
 var rewards = {
     'vetted': {
-        'unique_authors'        : overStat(20, 40, 200),
+        'total_editors'        : overStat(20, 40, 200),
         'paragraph_count'       : rangeStat(10, 30, 100),
         'wikitrust'             : underStat(0.6, 0.45, 600)
     },
@@ -84,7 +84,7 @@ var rewards = {
     },
     //rewards.integrated.read_more_section = ;
     'community': {
-        'unique_authors'        : overStat(20, 40, 100),
+        'total_editors'        : overStat(20, 40, 100),
         'fbTrustworthy'         : overStat(3, 3.5, 100),
         'fbObjective'           : overStat(3, 3.5, 100),
         'fbComplete'            : overStat(3, 3.5, 100),
@@ -296,8 +296,7 @@ var make_evaluator = function(dom, rewards, callback, mq) {
     Step(function register_inputs() {
         var results_group = this.group();
         self.inputs  = [
-             input('editorStats', web_source('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=' + article_title + '&rvprop=user&rvlimit=50&format=json'), editorStats)
-            ,input('inLinkStats', web_source('http://en.wikipedia.org/w/api.php?action=query&format=json&list=backlinks&bltitle=' + article_title + '&bllimit=500&blnamespace=0'), inLinkStats)
+            input('inLinkStats', web_source('http://en.wikipedia.org/w/api.php?action=query&format=json&list=backlinks&bltitle=' + article_title + '&bllimit=500&blnamespace=0'), inLinkStats)
             ,input('feedbackStats', web_source('http://en.wikipedia.org/w/api.php?action=query&list=articlefeedback&afpageid=' + article_id + '&afuserrating=1&format=json&afanontoken=01234567890123456789012345678912'), feedbackStats)
             ,input('searchStats', web_source('http://ajax.googleapis.com/ajax/services/search/web?v=1.0&q=' + article_title), searchStats)
             ,input('newsStats',  web_source('http://ajax.googleapis.com/ajax/services/search/news?v=1.0&q=' + article_title), newsStats)
@@ -306,6 +305,7 @@ var make_evaluator = function(dom, rewards, callback, mq) {
             ,input('getAssessment', web_source('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + article_title + '&rvprop=content&redirects=true&format=json'), getAssessment)
             ,input('domStats', dom, domStats)
             ,input('bingWebStats', web_source('http://api.bing.net/json.aspx?Appid=202F17E764089C60340ACA3FBBC558453354DA76&query=' + article_title  +  '&web.count=1&news.count=1&sources=web+news'), bingWebStats)
+            ,input('revisionStats', web_source('http://ortelius.toolserver.org:8088/revisions/' + article_title), revisionStats)
         ];
         
         for(var i=0; i<self.inputs.length; ++i) {
@@ -502,33 +502,18 @@ function domStats(dom) {
 }
 
 function bingWebStats(data) {
-    ret = {}
+    ret = {};
     ret.bing_news_results = data.SearchResponse.News.Total;
     ret.bing_web_results = data.SearchResponse.Web.Total;
     return ret;
 }
 
-// Start calculation functions
-function editorStats(data) {
-    var ret = {};
-    for(var id in data.query.pages) {
-        if(!data.query.pages.hasOwnProperty(id)) {
-        continue;
-        }
-        var author_counts = {};
-        var editor_count = data.query.pages[id].revisions;
-        for(var i = 0; i < editor_count.length; i++) {
-            if(!author_counts[editor_count[i].user]) {
-                    author_counts[editor_count[i].user] = 0;
-            }
-            author_counts[editor_count[i].user] += 1;
-        }
-        ret.author_counts = author_counts;
-    }
-    ret.unique_authors = keys(ret.author_counts).length;
-
-    return ret;
+function revisionStats(data) {
+    ret = {};
+    return data;
 }
+
+// Start calculation functions
 
 function inLinkStats(data) {
     //TODO: if there are 500 backlinks, we need to make another query
