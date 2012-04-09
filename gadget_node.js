@@ -27,9 +27,12 @@
  // TODO: logging refactor
  // TODO: free memory (start by deleting dom from evaluator)
  // TODO: stream process the evaluators in get_category
+ // TODO: Section/subsection word count per paragraph
  
 // if this page is on a mediawiki site, change to testing to false:
 var testing = !(this.mw);
+
+var write_html_files = false; // make sure to create html folder
 
 var jsdom = require('jsdom');
 var dummy_window = jsdom.jsdom().createWindow();
@@ -45,7 +48,7 @@ var Step = require('./step.js');
 if(testing === true) {
     var article_title = 'Charizard';
     
-    get_category('Category:Featured_articles', 5);
+    get_category('Category:Featured_articles', 20);
     //get_category('Category:Articles_with_inconsistent_citation_formats', 2);
     //get_category('Category:FA-Class_articles', 50);
 } else {
@@ -346,7 +349,7 @@ var make_evaluator = function(dom, rewards, callback, mq) {
             ,input('grokseStats', yql_source('select * from json where url ="http://stats.grok.se/json/en/201201/' + article_title + '"'), grokseStats)
             ,input('getAssessment', web_source('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + article_title + '&rvprop=content&redirects=true&format=json'), getAssessment)
             ,input('domStats', dom, domStats)
-            ,input('bingWebStats', web_source('http://api.bing.net/json.aspx?Appid=202F17E764089C60340ACA3FBBC558453354DA76&query=' + article_title  +  '&web.count=1&news.count=1&sources=web+news'), bingWebStats)
+            //,input('bingWebStats', web_source('http://api.bing.net/json.aspx?Appid=202F17E764089C60340ACA3FBBC558453354DA76&query=' + article_title  +  '&web.count=1&news.count=1&sources=web+news'), bingWebStats)
             ,input('revisionStats', web_source('http://ortelius.toolserver.org:8088/revisions/' + article_title), revisionStats)
         ];
         
@@ -672,6 +675,31 @@ function prepare_window_node(err, kwargs, callback) {
     
     var jsdom = require('jsdom');
     
+    if (write_html_files) {
+        var fs       = require('fs');
+        var out_file = fs.createWriteStream('html/'+article_title+'.html', {'flags': 'w', 'encoding':'utf8'});
+        if (typeof out_file.setEncoding === 'function') {
+            out_file.setEncoding('utf-8');
+        }
+        out_file.write(text);
+        out_file.destroySoon();
+    }
+    
+    /*var window = {};
+    var real_values = {
+        'wgTitle': article_title,
+        'wgArticleId': article_id,
+        'wgCurRevisionId': revision_id
+    };
+
+    var mw = {}; //building a mock object to look like mw (loaded on wikipedia by javascript)
+    mw.config = {};
+    mw.config.get = function(key) {
+        return real_values[key] || null;
+    };
+    window.mw = mw; //attach mock object to fake window
+    callback(null, window); */
+    
     jsdom.env({
         html: text,
         done: function(errors, window) {
@@ -916,6 +944,10 @@ function evaluate_article_node(article_title, article_id, rev_id, eval_callback)
                     throw err; //return //TODO how to give up?  
                 }
             } else {
+                if(evaluator.window) {
+                    evaluator.window.close();
+                    delete evaluator.window;
+                }
                 console.log('finished '+evaluator.article_title);
                 //print_page_stats(err, evaluator);
                 if (eval_callback) {
