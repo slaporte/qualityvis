@@ -20,19 +20,37 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
+ 
  // TODO: contextualized inputs
  // TODO: pass in precomputed data
  // TODO: save/replay queue?
+ // TODO: logging refactor
+ // TODO: free memory (start by deleting dom from evaluator)
+ // TODO: stream process the evaluators in get_category
+ // TODO: Section/subsection word count per paragraph
  
 // if this page is on a mediawiki site, change to testing to false:
-var testing = true;
+var testing = !(this.mw);
 
+var write_html_files = false; // make sure to create html folder
+
+var jsdom = require('jsdom');
+var dummy_window = jsdom.jsdom().createWindow();
+dummy_window.XMLHttpRequest = require('xmlhttprequest').XMLHttpRequest;
+var jq_lib = require('jquery');
+var $ = jq_lib.create(dummy_window);
+    $.support.cors = true;
+var extend = $.extend;
+
+var global_timeout = 30000;
+var Step = require('./step.js');
 
 if(testing === true) {
     var article_title = 'Charizard';
-    //var revid = 476545765;
-    //var articleId = 7463;
+    
+    get_category('Category:Featured_articles', 20);
+    //get_category('Category:Articles_with_inconsistent_citation_formats', 2);
+    //get_category('Category:FA-Class_articles', 50);
 } else {
     var article_title = mw.config.get('wgTitle');
     var revid = mw.config.get('wgCurRevisionId');
@@ -120,62 +138,8 @@ function keys(obj) {
     return ret;
 }
 
-var dummy_window = require('jsdom').jsdom().createWindow();
-dummy_window.XMLHttpRequest = require('xmlhttprequest').XMLHttpRequest;
-var $ = require('jquery').create(dummy_window);
-    $.support.cors = true;
-var extend = $.extend;
-
-var global_timeout = 8000;
-
-function do_query(url, complete_callback, kwargs) {
-    var all_kwargs = {
-        url: url,
-        type: 'get',
-        dataType: 'json',
-        timeout: global_timeout, // TODO: convert to setting. Necessary to detect jsonp error.
-        success: function(data) {
-            complete_callback(null, data);
-        },
-        error: function(jqXHR, textStatus, errorThrown) {
-            complete_callback(errorThrown, null);
-        },
-        complete: function(jqXHR, textStatus) {
-            // TODO: error handling (jsonp doesn't get error() calls for a lot of errors)
-        },
-        headers: { 'User-Agent': 'QualityVis/0.0.0 Mahmoud Hashemi makuro@gmail.com' }
-    };
-
-    for (var key in kwargs) {
-        if(kwargs.hasOwnProperty(key)) {
-            all_kwargs[key] = kwargs[key];
-        }
-    }
-    $.ajax(all_kwargs);
-}
-
-function debounce(fn, delay) {
-    var timer = null;
-    return function () {
-        var context = this, args = arguments;
-        clearTimeout(timer);
-        timer = setTimeout(function () {
-            fn.apply(context, args);
-        }, delay);
-    };
-}
-
-function throttle(fn, delay) {
-    var timer = null;
-    return function () {
-        var context = this, args = arguments;
-        timer = setTimeout(function () {
-            fn.apply(context, args);
-        }, delay);
-    };
-}
-
 // TODO: register/save function?
+// TODO: (possibly related to ^) record/replay
 var queue = function(delay) {
     delay = delay || 250;
     var self = {};
@@ -192,73 +156,100 @@ var queue = function(delay) {
         timer = null;
     };
     self.start = function() {
+        //console.log(self.pending.length + ' items in queue.');
         if (!timer) {
             //console.log('started');
             timer = setInterval(process, delay);
-            process();
+            //process();
         }
     };
+    self.cur_executing = 0;
+    self.max_executing = 12;
     process = function process_task() {
         //console.log('attempting to process...');
+        if(self.cur_executing >= self.max_executing) {
+            return;
+        }
         if(self.pending.length > 0) {
             var n = self.pending.pop();
             //console.log('doin an n');
+            
+            var callback = function() {
+                console.log('Finished a task, '+self.cur_executing+' tasks still in flight. '+ self.pending.length + ' waiting.');
+                self.cur_executing -= 1;
+                process();
+                n.callback.apply(this, arguments);
+            };
             var retry = function retry() {
+                var item_name = n.func.name || 'unknown queued function';
+                console.log('retrying '+ item_name);
                 self.enqueue(n.func, n.callback);
             };
-            n.func(n.callback, retry);
+            
+            self.cur_executing += 1;
+            try {
+                n.func(callback, retry);
+            } catch (exc){
+                console.log('Major failure :/ ');
+                callback(exc, null);
+            }
         } else {
-            self.stop();
+            if (self.cur_executing == 0) {
+                self.stop();
+            }
         }
     };
     return self;
 };
 
-// TODO configurable retry failure. at least retry in a couple seconds.
-// complete is called on the input actually completely finishing (success/fatal error)
-// ind_complete is called for an individual call's completion (retry)
-var input = function(name, fetch, process) {
-    var self;
-    self = function(complete, retry) {
-        //console.log('Calling into input: '+name);
-        var fetch_callback = function fetch_callback(err, data) {
-            self.fetch_data = data; //may or may not be large
-            if (err) {
-                console.log('failed fetch on: '+name+' '+err);
-                self.error = 'Failed to fetch data for '+name;
-                complete(null, self);  // err?
+var successful_queries = 0;
+var failed_queries = 0;
+var complete_queries = 0;
+
+function do_query(url, complete_callback, kwargs) {
+    var all_kwargs = {
+        url: url,
+        type: 'get',
+        dataType: 'json',
+        timeout: global_timeout, // TODO: convert to setting. Necessary to detect jsonp error.
+        success: function(data) {
+            successful_queries++;
+            console.log(successful_queries + ' successful queries.');
+            if (successful_queries % 20 == 0) {
+                var util = require('util');
+                console.log('Memory stats:');
+                console.log(util.inspect(process.memoryUsage()));
             }
-            
-            try {
-                self.results = process(data);
-            } catch (proc_err) {
-                self.results = null;
-                self.error = 'Failed to process data for '+name;
-                console.log(self.error);
-            }
-            complete(null, self);
-        };
-        
-        if (fetch instanceof Function) {
-            fetch(fetch_callback);
-        } else {
-            fetch_callback(null, fetch);
-        }
+            complete_callback(null, data);
+        },
+        error: function(jqXHR, textStatus, errorThrown) {
+            failed_queries++;
+            console.log(failed_queries + ' failed queries.' + url);
+            complete_callback(errorThrown, null);
+        },
+        complete: function(jqXHR, textStatus) {
+            //console.log('complete');
+            // TODO: error handling (jsonp doesn't get error() calls for a lot of errors)
+        },
+        headers: { 'User-Agent': 'QualityVis/0.0.0 Mahmoud Hashemi makuro@gmail.com' }
     };
-    self.name     = name;
-    self.attempts = 0;
-    
-    return self;
-};
+
+    for (var key in kwargs) {
+        if(kwargs.hasOwnProperty(key)) {
+            all_kwargs[key] = kwargs[key];
+        }
+    }
+    $.ajax(all_kwargs);
+}
 
 var web_source = function(url) {
     var self = function fetch_web_source(callback) {
         //console.log('start web query for '+name);
         do_query(url, callback);
-    };
+    }
     self.get_url = function get_url() {
         return url;
-    };
+    }
     return self;
 };
 
@@ -267,10 +258,64 @@ var yql_source = function(query) {
         //console.log('start yql query for '+name);
         var kwargs = {data: {q: query, format: 'json'}};
         do_query('http://query.yahooapis.com/v1/public/yql', callback, kwargs);
-    };
+    }
 };
 
-var Step = require('./step.js');
+// TODO configurable retry failure. at least retry in a couple seconds.
+// complete is called on the input actually completely finishing (success/fatal error)
+// ind_complete is called for an individual call's completion (retry)
+var input = function(name, fetch_or_data, process) {
+    var self;
+
+    self = function(complete, retry) {
+        self.name     = name;
+        self.attempts = self.attempts + 1 || 1;
+        //console.log('Calling into input: '+name);
+        var fetch_callback = function fetch_callback(err, data) {
+            self.fetch_data = data; //may or may not be large
+            if (err) {
+                console.log('failed fetch on: '+name+' '+err);
+                self.error = 'Failed to fetch data for '+name;
+                if (self.attempts < 3) {
+                    retry();
+                } else {
+                    complete(null, self);  // err?
+                }
+            }
+            
+            try {
+                if (process) {
+                    self.results = process(data);
+                } else {
+                    self.results = data;
+                }
+            } catch (proc_err) {
+                self.results = null;
+                self.error = 'Failed to process data for '+name;
+                console.log(self.error);
+            }
+            try {
+                complete(null, self);
+            } catch(myerr) {
+                console.log('foo: ' + myerr);
+                throw err;
+            }
+        };
+        
+        if (fetch_or_data instanceof Function) {  
+            // fetch_or_data is a function to fetch the data
+            var fetch = fetch_or_data;
+            fetch(fetch_callback);
+        } else {  
+            // fetch_or_data is the data itself
+            var data = fetch_or_data;
+            fetch_callback(null, data);
+        }
+    };
+    self.attempts = 0;
+    
+    return self;
+};
 
 // One limitation on this model (easily refactored): calculators can't read from data
 // they can only write to it. Mostly this is because we don't know what will or won't
@@ -304,7 +349,7 @@ var make_evaluator = function(dom, rewards, callback, mq) {
             ,input('grokseStats', yql_source('select * from json where url ="http://stats.grok.se/json/en/201201/' + article_title + '"'), grokseStats)
             ,input('getAssessment', web_source('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + article_title + '&rvprop=content&redirects=true&format=json'), getAssessment)
             ,input('domStats', dom, domStats)
-            ,input('bingWebStats', web_source('http://api.bing.net/json.aspx?Appid=202F17E764089C60340ACA3FBBC558453354DA76&query=' + article_title  +  '&web.count=1&news.count=1&sources=web+news'), bingWebStats)
+            //,input('bingWebStats', web_source('http://api.bing.net/json.aspx?Appid=202F17E764089C60340ACA3FBBC558453354DA76&query=' + article_title  +  '&web.count=1&news.count=1&sources=web+news'), bingWebStats)
             ,input('revisionStats', web_source('http://ortelius.toolserver.org:8088/revisions/' + article_title), revisionStats)
         ];
         
@@ -322,8 +367,8 @@ var make_evaluator = function(dom, rewards, callback, mq) {
         var merged_data = {};
         for (var i = 0; i < completed_inputs.length; ++i) {
             var cur_input = completed_inputs[i];
-            if (cur_input.error) {
-                console.log('Input failed: '+ cur_input.name + ' with error: ' + cur_input.error);
+            if (!cur_input.results && cur_input.error) {
+                console.log('Input failed: '+ cur_input.name + ' with error: ' + cur_input.error + ' after ' + cur_input.attempts + ' attempts.');
                 self.failed_inputs.push(cur_input);
             } else {
                 //console.log('Input succeeded: '+cur_input.name);
@@ -619,39 +664,6 @@ function getAssessment(data) {
 
 // End calculation functions
 
-function get_article_info(err, kwargs, callback) {
-    var article_title = kwargs.article_title;
-    
-    do_query('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles='+article_title+'&rvprop=ids&redirects=true&format=json',
-        function(err, data) {
-            if (err) {
-                console.log('probably timed out');
-            }
-            var page_ids = keys(data.query.pages),
-                pages    = data.query.pages;
-            if (page_ids.length > 0) {
-                var article_id    = page_ids[0];
-                    article_title = pages[article_id].title.replace(' ', '_');
-                    rev_id        = pages[article_id].revisions[0].revid;
-                    prev_rev_id   = pages[article_id].revisions[0].parentid;
-                callback(null, {'article_title':article_title,
-                              'article_id':article_id,
-                              'rev_id': rev_id});
-                
-            } else {
-                console.log('No article with title '+ article_title + ' found.');
-            }
-        });
-}
-
-function get_article(err, kwargs, callback) {
-    var article_title = kwargs.article_title;
-    
-    do_query('http://en.wikipedia.org/w/api.php?action=parse&page='+article_title+'&format=json&redirects=true',
-         callback
-    );
-}
-
 function prepare_window_node(err, kwargs, callback) {
     var data                = kwargs.data,
         article_info        = kwargs.article_info,
@@ -663,11 +675,35 @@ function prepare_window_node(err, kwargs, callback) {
     
     var jsdom = require('jsdom');
     
+    if (write_html_files) {
+        var fs       = require('fs');
+        var out_file = fs.createWriteStream('html/'+article_title+'.html', {'flags': 'w', 'encoding':'utf8'});
+        if (typeof out_file.setEncoding === 'function') {
+            out_file.setEncoding('utf-8');
+        }
+        out_file.write(text);
+        out_file.destroySoon();
+    }
+    
+    /*var window = {};
+    var real_values = {
+        'wgTitle': article_title,
+        'wgArticleId': article_id,
+        'wgCurRevisionId': revision_id
+    };
+
+    var mw = {}; //building a mock object to look like mw (loaded on wikipedia by javascript)
+    mw.config = {};
+    mw.config.get = function(key) {
+        return real_values[key] || null;
+    };
+    window.mw = mw; //attach mock object to fake window
+    callback(null, window); */
+    
     jsdom.env({
         html: text,
         done: function(errors, window) {
-            var $ = require('jquery').create(window);
-        
+            window.jQuery = jq_lib.create(window);
             var real_values = {
                 'wgTitle': article_title,
                 'wgArticleId': article_id,
@@ -683,12 +719,16 @@ function prepare_window_node(err, kwargs, callback) {
             callback(null, window);
         }
     });
-}
+};
 
 function get_category(name, limit) {
     console.log('getting up to '+limit+' articles for '+name);
     Step( function get_article_names() {
-        do_query('http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=' + name + '&prop=info&gcmlimit=' + limit + '&format=json',
+        var url = 'http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=' 
+                   + encodeURIComponent(name) 
+                   + '&prop=info&gcmlimit=' 
+                   + encodeURIComponent(limit) + '&format=json';
+        do_query(url,
             this);
         }, function evaluate_articles(err, data) {
             if (err) {
@@ -698,6 +738,8 @@ function get_category(name, limit) {
             console.log('did the category query');
             var pages = data.query.pages;
             var infos = [];
+
+            console.log(keys(pages).length + ' total pages got.');
             for(var key in pages){
                 var page = pages[key];
                 if(page.ns === 0) {
@@ -707,7 +749,7 @@ function get_category(name, limit) {
                                 });
                 }
             }
-            console.log(infos.length + ' infos got.');
+            console.log(infos.length + ' processable infos got.');
             var articles_group = this.group();
             for (var i=0; i < infos.length; ++i) {
                 var article_title = infos[i].article_title,
@@ -719,10 +761,11 @@ function get_category(name, limit) {
             if (err) {
                 throw err
             }
-            //output_csv('yup.csv', evs);
-            console.log(evs);
+            
+            var filename = 'output_'+(new Date()).valueOf()+'.csv';
+            output_csv(filename, evs);
         });
-}
+};
 
 function print_page_stats(err, ev) {
     console.log("\nPage stats for " + ev.article_title + "\n");
@@ -745,10 +788,19 @@ function print_page_stats(err, ev) {
 
 var mq = queue(50);
 
-var evaluators = [];
-
-function escape_field(str) {
-    return str;
+function escape_field(val) {
+    var out_arr = [];
+    if(typeof(val) === 'string') {
+        for (var i = 0; i < val.length; i++) {
+            if (val[i] === '"') {
+                out_arr.push('"');
+            }
+            out_arr.push(val[i]);
+        }
+        return '"'+out_arr.join('')+'"';
+    } else {
+        return val;
+    }
 }
 
 function is_outputtable(val) {
@@ -786,7 +838,7 @@ function output_csv(path, evs, callback) {
     col_names.push.apply(col_names, keys(tmp_names).sort());
     
     var fs       = require('fs');
-    var out_file = fs.createWriteStream(path, {'flags': 'w'});
+    var out_file = fs.createWriteStream(path, {'flags': 'w', 'encoding':'utf8'});
     if (typeof out_file.setEncoding === 'function') {
         out_file.setEncoding('utf-8');
     }
@@ -809,32 +861,71 @@ function output_csv(path, evs, callback) {
         out_file.write('\n');
     }
     out_file.destroySoon();
+    
+    console.log('Wrote results to '+path);
     //callback();
 }
 
-function evaluate_article_node(article_title, article_id, rev_id, callback) {
+
+function get_info_callback(real_callback) {
+    return function(err, data) {
+        var get_info_failed = (err || !(data && data.query));
+        if (get_info_failed) {
+            console.log('error getting info. maybe timed out?');
+            return;
+        } 
+        var page_ids = keys(data.query.pages),
+            pages    = data.query.pages;
+        
+        if (page_ids.length == 0) {
+            console.log('No article with title '+ article_title + ' found.');
+            return;
+        }
+        var article_id    = page_ids[0],
+            article_title = pages[article_id].title.replace(' ', '_'),
+            rev_id        = pages[article_id].revisions[0].revid,
+            prev_rev_id   = pages[article_id].revisions[0].parentid;
+        real_callback(null, {article_title: article_title, 
+                             article_id: article_id, 
+                             rev_id: rev_id});
+    };
+};
+
+
+function evaluate_article_node(article_title, article_id, rev_id, eval_callback) {
     Step(
         function start() {
-            var kwargs = {'article_title':article_title};
             console.log("Start QV on "+article_title);
             
             var info_callback = this.parallel();
             if (!article_id || !rev_id) {
-                get_article_info(null, kwargs, info_callback); //article title normalization?
+                // first order of business, wrap in processing function
+                info_callback = get_info_callback(info_callback); 
+                var info_input = input('get_article_info',
+                                       web_source('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles='+article_title+'&rvprop=ids&redirects=true&format=json')
+                                       );
+                mq.enqueue(info_input, info_callback);
             } else {
-                info_callback(null, { 'article_title': article_title,
-                                    'article_id'   : article_id,
-                                    'rev_id'       : rev_id
-                                  });
+                info_callback(null,{results: { article_title: article_title,
+                                            article_id   : article_id,
+                                            rev_id       : rev_id
+                                            }
+                                    }
+                              );
             }
-            get_article(null, kwargs, this.parallel());
+            
+            var content_input = input('get_article_content',
+                                      web_source('http://en.wikipedia.org/w/api.php?action=parse&page='+article_title+'&format=json&redirects=true')
+                                      );
+            mq.enqueue(content_input, this.parallel());
         },
-        function prepare_window(err, article_info, article_content) {
+        function prepare_window(err, info_input, content_input) {
             if (err) {
-                console.log('Error retrieving info for article "'+article_info.article_title+'"');
+                console.log('Error retrieving info for article "'+article_title+'"');
                 throw err; //return //TODO how to give up?
             }
-            prepare_window_node(err, {'article_info': article_info, 'article': article_content},
+            prepare_window_node(err, {'article_info': info_input.results,
+                                      'article': content_input.results},
                                 this);
         },
         function make_evaluator_wrapper(err, window) {
@@ -847,15 +938,22 @@ function evaluate_article_node(article_title, article_id, rev_id, callback) {
         function all_done(err, evaluator) {
             if (err) {
                 console.log('Could not evaluate article: '+err);
-                throw err; //return //TODO how to give up?
-            }
-            console.log('finished '+evaluator.article_title);
-            //print_page_stats(err, evaluator);
-            if (callback) {
-                callback(null, evaluator);
+                if(eval_callback) {
+                    eval_callback(err, null);
+                } else {
+                    throw err; //return //TODO how to give up?  
+                }
+            } else {
+                if(evaluator.window) {
+                    evaluator.window.close();
+                    delete evaluator.window;
+                }
+                console.log('finished '+evaluator.article_title);
+                //print_page_stats(err, evaluator);
+                if (eval_callback) {
+                    eval_callback(null, evaluator);
+                }
             }
         }
     );
 }
-//get_category('Category:FA-Class_articles', 50);
-get_category('Category:Articles_with_inconsistent_citation_formats', 2);

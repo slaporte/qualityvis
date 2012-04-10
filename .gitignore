@@ -4,5 +4,6 @@ pub/
 ._*
 .\#*
 \#*\#
+*.csv
 
 node_modules
