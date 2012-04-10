@@ -26,7 +26,7 @@ var testing = true;
 
 
 if(testing == true) {
-    var page_title = 'Cold_fusion';
+    var page_title = 'Charizard';
     var revid = 476545765;
     var articleId = 7463;
 } else {
@@ -287,7 +287,12 @@ function domStats(data) {
     ret      = {};
 
     ret.ref_count = $('.reference', wikitext).length;
-    ret.paragraph_count = $('.mw-content-ltr p').length;
+    ret.word_count = $('p').text().split(/\b[\s,\.-:;]*/).length;
+    ret.paragraph_count = $('p').length;
+    ret.paragraph_counts = [];
+    $('p').each(function() {
+        ret.paragraph_counts.push($(this).text().split(/\b[\s,\.-:;]*/).length);
+    });
     ret.image_count = $('img', wikitext).length;
     ret.category_count = data.parse.categories.length;
     ret.reference_section_count = $('#References', wikitext).length;
