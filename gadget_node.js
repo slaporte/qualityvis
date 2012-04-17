@@ -32,7 +32,7 @@
 // if this page is on a mediawiki site, change to testing to false:
 var testing = !(this.mw);
 
-var write_html_files = false; // make sure to create html folder
+var write_html_files = true; // make sure to create html folder
 
 var jsdom = require('jsdom');
 var dummy_window = jsdom.jsdom().createWindow();
@@ -46,9 +46,7 @@ var global_timeout = 30000;
 var Step = require('./step.js');
 
 if(testing === true) {
-    var article_title = 'Charizard';
-    
-    get_category('Category:Featured_articles', 20);
+    get_category('Category:Featured_articles', 5);
     //get_category('Category:Articles_with_inconsistent_citation_formats', 2);
     //get_category('Category:FA-Class_articles', 50);
 } else {
@@ -194,7 +192,7 @@ var queue = function(delay) {
                 callback(exc, null);
             }
         } else {
-            if (self.cur_executing == 0) {
+            if (self.cur_executing === 0) {
                 self.stop();
             }
         }
@@ -215,7 +213,7 @@ function do_query(url, complete_callback, kwargs) {
         success: function(data) {
             successful_queries++;
             console.log(successful_queries + ' successful queries.');
-            if (successful_queries % 20 == 0) {
+            if (successful_queries % 20 === 0) {
                 var util = require('util');
                 console.log('Memory stats:');
                 console.log(util.inspect(process.memoryUsage()));
@@ -246,10 +244,10 @@ var web_source = function(url) {
     var self = function fetch_web_source(callback) {
         //console.log('start web query for '+name);
         do_query(url, callback);
-    }
+    };
     self.get_url = function get_url() {
         return url;
-    }
+    };
     return self;
 };
 
@@ -258,7 +256,7 @@ var yql_source = function(query) {
         //console.log('start yql query for '+name);
         var kwargs = {data: {q: query, format: 'json'}};
         do_query('http://query.yahooapis.com/v1/public/yql', callback, kwargs);
-    }
+    };
 };
 
 // TODO configurable retry failure. at least retry in a couple seconds.
@@ -302,11 +300,11 @@ var input = function(name, fetch_or_data, process) {
             }
         };
         
-        if (fetch_or_data instanceof Function) {  
+        if (fetch_or_data instanceof Function) {
             // fetch_or_data is a function to fetch the data
             var fetch = fetch_or_data;
             fetch(fetch_callback);
-        } else {  
+        } else {
             // fetch_or_data is the data itself
             var data = fetch_or_data;
             fetch_callback(null, data);
@@ -470,75 +468,153 @@ function domStats(dom) {
     var ret = {},
         $   = dom.jQuery;
 
-    ret.ref_count = $('.reference').length; /* includes both references and notes */
-    ret.source_count = $('li[id^="cite_note"]').length; /* includes both references and notes */
-    ret.word_count = $('p').text().split(/\b[\s,\.-:;]*/).length;
-    ret.paragraph_count = $('p').length;
-    ret.paragraph_counts = [];
+    function section_stats(header) {
+        /* requires jquery */
+        var sub_words = [];
+        var word_count = 0;
+        var len = 0;
+        $(header).each(function() {
+            if($(this).text() != "Contents") {
+                sub_words.push($(this).nextUntil(header).text().split(/\b[\s,\.-:;]*/).length);
+            }
+        });
+        function sortNum(a, b) {
+            return b - a;
+        }
+        for (var n in sub_words) {
+            word_count += sub_words[n];
+        }
+        if(sub_words.length !== 0) {
+            var average = word_count / sub_words.length;
+            var smallest = sub_words.sort(sortNum).slice(-1)[0];
+            var largest = sub_words.sort(sortNum)[0];
+            return {'average': average, 'smallest': smallest, 'largest': largest, 'total': sub_words.length};
+        } else {
+            return {'average': 0, 'smallest': 0, 'largest': 0, 'total': 0};
+        }
+    }
+    
+    ret.query_category_count = dom.mw.config.get('wgCategories').length;
+    /**
+    these are available in the api query, but not the live mw dom object
+    
+    ret.query_external_links_count = dom.parse.externallinks.length;
+    ret.query_images_count  = dom.parse.images.length;
+    ret.query_langlinks_count = dom.parse.langlinks.length;
+    ret.query_links         = dom.parse.links.length;
+    ret.query_sections      = dom.parse.sections.length;
+    ret.query_templates     = dom.parse.templates.length; */
+
+    /* structural features */
+    h2                      = section_stats('h2');
+    ret.h2_average          = h2.average;
+    ret.h2_large            = h2.largest;
+    ret.h2_small            = h2.smallest;
+    ret.h2_total            = h2.total;
+    h3                      = section_stats('h3');
+    ret.h3_average          = h3.average;
+    ret.h3_large            = h3.largest;
+    ret.h3_small            = h3.smallest;
+    ret.h3_total            = h3.total;
+    h4                      = section_stats('h4');
+    ret.h4_average          = h4.average;
+    ret.h4_large            = h4.largest;
+    ret.h4_small            = h4.smallest;
+    ret.h4_total            = h4.total;
+    h5                      = section_stats('h5');
+    ret.h5_average          = h5.average;
+    ret.h5_large            = h5.largest;
+    ret.h5_small            = h5.smallest;
+    ret.h5_total            = h5.total;
+    ret.h6_total            = section_stats('h6').total;
+
+    /* general size */
+    ret.word_count          = $('p').text().split(/\b[\s,\.-:;]*/).length;
+    ret.paragraph_count     = $('p').length;
+    ret.paragraph_counts    = [];
     $('p').each(function() {
-        ret.paragraph_counts.push($(this).text().split(/\b[\s,\.-:;]*/).length);
+        ret.paragraph_counts.push($(this).text().split(/\b[\s,\.-:;]*/).length); /* words per paragraph */
     });
-    ret.image_count = $('img').length;
-    //ret.category_count = dom.mw.config.get('wgCategories').length;
+
+    /* reference features */
+    ret.ref_count           = $('.reference').length; /* includes both references and notes */
+    ret.source_count        = $('li[id^="cite_note"]').length; /* includes both references and notes */
+    
+    /* section organization */
     ret.reference_section_count = $('#References').length;
     ret.external_links_section_count = $('#External_links').length;
+    ret.intro_p_count       =  $('#toc').prevAll('p').length;
+    ret.new_internal_link_count = $('.new').length;
+    ret.infobox_count       = $('.infobox').length;
+
+    /* in section counts */
+    ret.footnotes_in_section = $('#Footnotes').parent().nextAll('div').children('ul').children('li').length;
     ret.external_links_in_section = $('#External_links').parent().nextAll('ul').children().length;
-    //ret.external_links_total = data.parse.externallinks.length;
-    //ret.internal_links = data.parse.links.length;
-    ret.intro_p_count =  $('p').length;
-    ret.p_count = $('p').length;
-    ret.new_internal_link_count = $('.new');
-    ret.ref_needed_count = $('span:contains("citation")').length;
-    ret.pov_statement_count = $('span:contains("neutrality")').length;
-    ret.pov_statement_count = $('span:contains("neutrality")').length;
-    ret.dom_internal_link_count = $('p a:not([class])[href^="/wiki/"]').length;
-    ret.first_head_count = $('h2').length;
-    ret.second_head_count = $('h3').length;
+    ret.see_also_links_in_section = $('#See_also').parent().nextAll('ul').children().length;
+
+    /* linkage */
+    ret.external_links_total_count = $('.external').length;
     ret.links = [];
     $('p a:not([class])[href^="/wiki/"]').each(function() {
-        ret.links.push($(this).text());
+        ret.links.push($(this).text()); /* all the links ... TODO: disamibg */
     });
-    ret.dom_category_count = $("a[href^='/wiki/Category:']").length;
+    ret.links_count         = ret.links.length;
+    ret.dom_internal_link_count = $('p a:not([class])[href^="/wiki/"]').length;
+
+
+    /* flags */
+    ret.ref_needed_count    = $('span:contains("citation")').length;
+    ret.pov_statement_count = $('span:contains("neutrality")').length;
+
+    /* this will be 0 from api */
+    ret.dom_category_count  = $("a[href^='/wiki/Category:']").length;
+
+    /* multimedia */
+    ret.image_count         = $('img').length;
+    ret.ogg                 = $("a[href$='ogg']").length;
+    ret.mid                 = $("a[href$='mid']").length;
+    ret.geo                  = $('.geo-dms').length;
+
 
     /* templates will (most likely) be 0 or 1 */
-    ret.templ_delete = $('.ambox-delete').length;
+    ret.templ_delete        = $('.ambox-delete').length;
     ret.templ_autobiography = $('.ambox-autobiography').length; // Template:Autobiography
-    ret.templ_advert = $('.ambox-Advert').length; // Template:Advert
+    ret.templ_advert        = $('.ambox-Advert').length; // Template:Advert
     ret.templ_citation_style = $('.ambox-citation_style').length; // Template:Citation style
-    ret.templ_cleanup = $('.ambox-Cleanup').length;
-    ret.templ_COI = $('.ambox-COI').length;
-    ret.templ_confusing = $('.ambox-confusing').length;
-    ret.templ_context = $('.ambox-Context').length;
-    ret.templ_copy_edit = $('.ambox-Copy_edit').length;
-    ret.templ_dead_end = $('.ambox-dead_end').length;
-    ret.templ_disputed = $('.ambox-disputed').length;
-    ret.templ_essay_like = $('.ambox-essay-like').length;
-    ret.templ_expert = $("td:contains('needs attention from an expert')").length; // Template:Expert
-    ret.templ_fansight = $('td:contains("fan\'s point of view")').length;
-    ret.templ_globalize = $('td:contains("do not represent a worldwide view")').length;
-    ret.templ_hoax = $('td:contains("hoax")').length;
-    ret.templ_in_universe = $('.ambox-in-universe').length;
+    ret.templ_cleanup       = $('.ambox-Cleanup').length;
+    ret.templ_COI           = $('.ambox-COI').length;
+    ret.templ_confusing     = $('.ambox-confusing').length;
+    ret.templ_context       = $('.ambox-Context').length;
+    ret.templ_copy_edit     = $('.ambox-Copy_edit').length;
+    ret.templ_dead_end      = $('.ambox-dead_end').length;
+    ret.templ_disputed      = $('.ambox-disputed').length;
+    ret.templ_essay_like    = $('.ambox-essay-like').length;
+    ret.templ_expert        = $("td:contains('needs attention from an expert')").length; // Template:Expert
+    ret.templ_fansight      = $('td:contains("fan\'s point of view")').length;
+    ret.templ_globalize     = $('td:contains("do not represent a worldwide view")').length;
+    ret.templ_hoax          = $('td:contains("hoax")').length;
+    ret.templ_in_universe   = $('.ambox-in-universe').length;
     ret.templ_intro_rewrite = $('.ambox-lead_rewrite').length;
-    ret.templ_merge = $('td:contains("suggested that this article or section be merged")').length;
-    ret.templ_no_footnotes = $('.ambox-No_footnotes').length;
-    ret.templ_howto = $('td:contains("contains instructions, advice, or how-to content")').length;
-    ret.templ_non_free = $('.ambox-non-free').length;
-    ret.templ_notability = $('.ambox-Notability').length;
-    ret.templ_not_english = $('.ambox-not_English').length;
-    ret.templ_NPOV = $('.ambox-POV').length;
+    ret.templ_merge         = $('td:contains("suggested that this article or section be merged")').length;
+    ret.templ_no_footnotes  = $('.ambox-No_footnotes').length;
+    ret.templ_howto         = $('td:contains("contains instructions, advice, or how-to content")').length;
+    ret.templ_non_free      = $('.ambox-non-free').length;
+    ret.templ_notability    = $('.ambox-Notability').length;
+    ret.templ_not_english   = $('.ambox-not_English').length;
+    ret.templ_NPOV          = $('.ambox-POV').length;
     ret.templ_original_research = $('.ambox-Original_research').length;
-    ret.templ_orphan = $('.ambox-Orphan').length;
-    ret.templ_plot = $('.ambox-Plot').length;
+    ret.templ_orphan        = $('.ambox-Orphan').length;
+    ret.templ_plot          = $('.ambox-Plot').length;
     ret.templ_primary_sources = $('.ambox-Primary_sources').length;
-    ret.templ_prose = $('.ambox-Prose').length;
-    ret.templ_refimprove = $('.ambox-Refimprove').length;
-    ret.templ_sections = $('.ambox-sections').length;
-    ret.templ_tone = $('.ambox-Tone').length;
-    ret.templ_tooshort = $('.ambox-lead_too_short').length;
-    ret.templ_style = $('.ambox-style').length;
+    ret.templ_prose         = $('.ambox-Prose').length;
+    ret.templ_refimprove    = $('.ambox-Refimprove').length;
+    ret.templ_sections      = $('.ambox-sections').length;
+    ret.templ_tone          = $('.ambox-Tone').length;
+    ret.templ_tooshort      = $('.ambox-lead_too_short').length;
+    ret.templ_style         = $('.ambox-style').length;
     ret.templ_uncategorized = $('.ambox-uncategorized').length;
-    ret.templ_update = $('.ambox-Update').length;
-    ret.templ_wikify = $('.ambox-Wikify').length;
+    ret.templ_update        = $('.ambox-Update').length;
+    ret.templ_wikify        = $('.ambox-Wikify').length;
 
     /* may return 0+ (more = worse) */
     ret.templ_multiple_issues = $('.ambox-multiple_issues li').length;
@@ -554,7 +630,23 @@ function bingWebStats(data) {
 }
 
 function revisionStats(data) {
-    ret = {};
+    ret = data;
+
+    ret.rev_per_day     = ret.total_revisions / ret.age;
+    ret.IP_per_day      = ret.IP_edit_count / ret.age;
+    ret.minor_per_day   = ret.minor_count / ret.age;
+    ret.revert_per_day  = ret.reverts_estimate / ret.age;
+
+    ret.IP_per_rev      = ret.IP_edit_count / ret.total_revisions;
+    ret.minor_per_rev   = ret.minor_count / ret.total_revisions;
+    ret.revert_per_rev  = ret.reverts_estimate / ret.total_revisions;
+    ret.last_30_per_rev = ret.last_30_days_total_revisions / ret.total_revisions;
+    ret.last_500_per_rev = ret.last_500_total_revisions / ret.total_revisions;
+    ret.talk_per_rev    = ret.talk_revisions / ret.total_revisions;
+    ret.editors_five_plus_per_editor = ret.editors_five_plus_edits / ret.total_editors;
+
+    ret.talkers_per_editors = ret.talk_total_editors / ret.total_editors;
+
     return data;
 }
 
@@ -579,10 +671,10 @@ function feedbackStats(data) {
         complete    = ratings[2],
         wellwritten = ratings[3];
 
-    ret.fbTrustworthy = trustworthy.total / trustworthy.count;
-    ret.fbObjective = objective.total / objective.count;
-    ret.fbComplete = complete.total / complete.count;
-    ret.fbWellwritten = wellwritten.total / wellwritten.count;
+    ret.fbTrustworthy   = trustworthy.total / trustworthy.count;
+    ret.fbObjective     = objective.total / objective.count;
+    ret.fbComplete      = complete.total / complete.count;
+    ret.fbWellwritten   = wellwritten.total / wellwritten.count;
 
     return ret;
 }
@@ -602,9 +694,9 @@ function newsStats(data) {
 function wikitrustStats(data) {
     var ret = {};
     var res = data.query.results.body.p;
-    var success = !(res.indexOf('EERROR') == 0);
+    var success = !(res.indexOf('EERROR') === 0);
     if (success) {
-        ret.wikitrust = parseFloat(res)
+        ret.wikitrust = parseFloat(res);
     }
     return ret;
 }
@@ -707,7 +799,8 @@ function prepare_window_node(err, kwargs, callback) {
             var real_values = {
                 'wgTitle': article_title,
                 'wgArticleId': article_id,
-                'wgCurRevisionId': revision_id
+                'wgCurRevisionId': revision_id,
+                'wgCategories': article.parse.categories
             };
 
             var mw = {}; //building a mock object to look like mw (loaded on wikipedia by javascript)
@@ -719,7 +812,7 @@ function prepare_window_node(err, kwargs, callback) {
             callback(null, window);
         }
     });
-};
+}
 
 function get_category(name, limit) {
     console.log('getting up to '+limit+' articles for '+name);
@@ -759,13 +852,13 @@ function get_category(name, limit) {
             }
         }, function output_evaluations(err, evs) {
             if (err) {
-                throw err
+                throw err;
             }
             
             var filename = 'output_'+(new Date()).valueOf()+'.csv';
             output_csv(filename, evs);
         });
-};
+}
 
 function print_page_stats(err, ev) {
     console.log("\nPage stats for " + ev.article_title + "\n");
