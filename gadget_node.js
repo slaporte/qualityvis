@@ -46,7 +46,7 @@ var global_timeout = 30000;
 var Step = require('./step.js');
 
 if(testing === true) {
-    get_category('Category:Featured_articles', 5);
+    get_category('Category:Featured_articles', 10);
     //get_category('Category:Articles_with_inconsistent_citation_formats', 2);
     //get_category('Category:FA-Class_articles', 50);
 } else {
@@ -469,13 +469,18 @@ function domStats(dom) {
         $   = dom.jQuery;
 
     function section_stats(header) {
-        /* requires jquery */
+        var headers = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
         var sub_words = [];
         var word_count = 0;
         var len = 0;
+        var headerlevel = headers.indexOf(header);
+        if(headerlevel < 0) {
+            return 0;
+        }
+        var closing_header_selector = headers.slice(0, headerlevel + 1).join(',');
         $(header).each(function() {
             if($(this).text() != "Contents") {
-                sub_words.push($(this).nextUntil(header).text().split(/\b[\s,\.-:;]*/).length);
+                sub_words.push($(this).nextUntil(closing_header_selector).text().split(/\b[\s,\.-:;]*/).length);
             }
         });
         function sortNum(a, b) {
@@ -694,7 +699,7 @@ function newsStats(data) {
 function wikitrustStats(data) {
     var ret = {};
     var res = data.query.results.body.p;
-    var success = !(res.indexOf('EERROR') === 0);
+    var success = !(res.indexOf('EERROR') == 0);
     if (success) {
         ret.wikitrust = parseFloat(res);
     }
