@@ -46,7 +46,17 @@ var global_timeout = 30000;
 var Step = require('./step.js');
 
 if(testing === true) {
-    get_category('Category:Featured_articles', 10);
+    //var article_title = 'Charizard';
+    var cli = require('cli');
+    cli.parse({
+        article_count: ['n', 'Number of articles to fetch', 'number', 5],
+        category_name: ['c', 'Category of articles to fetch', 'string', 'Category:Featured_articles']
+    });
+    
+    cli.main(function(args, options) {
+        get_category(options.category_name, options.article_count);
+    });
+    
     //get_category('Category:Articles_with_inconsistent_citation_formats', 2);
     //get_category('Category:FA-Class_articles', 50);
 } else {
@@ -142,35 +152,30 @@ var queue = function(delay) {
     delay = delay || 250;
     var self = {};
     var process, timer;
+    self.is_started = false;
     self.pending = [];
     self.enqueue = function(func, callback) {
         self.pending.push({'func':func, 'callback':callback});
-        //console.log('enqueueing an n');
         self.start();
     };
     self.stop = function() {
-        //console.log('stopped');
-        clearTimeout(timer);
+        self.is_started = false;
         timer = null;
     };
     self.start = function() {
-        //console.log(self.pending.length + ' items in queue.');
         if (!timer) {
-            //console.log('started');
-            timer = setInterval(process, delay);
-            //process();
+            self.is_started = true;
+            process();
         }
     };
     self.cur_executing = 0;
     self.max_executing = 12;
     process = function process_task() {
-        //console.log('attempting to process...');
         if(self.cur_executing >= self.max_executing) {
             return;
         }
         if(self.pending.length > 0) {
             var n = self.pending.pop();
-            //console.log('doin an n');
             
             var callback = function() {
                 console.log('Finished a task, '+self.cur_executing+' tasks still in flight. '+ self.pending.length + ' waiting.');
@@ -226,7 +231,6 @@ function do_query(url, complete_callback, kwargs) {
             complete_callback(errorThrown, null);
         },
         complete: function(jqXHR, textStatus) {
-            //console.log('complete');
             // TODO: error handling (jsonp doesn't get error() calls for a lot of errors)
         },
         headers: { 'User-Agent': 'QualityVis/0.0.0 Mahmoud Hashemi makuro@gmail.com' }
@@ -242,7 +246,6 @@ function do_query(url, complete_callback, kwargs) {
 
 var web_source = function(url) {
     var self = function fetch_web_source(callback) {
-        //console.log('start web query for '+name);
         do_query(url, callback);
     };
     self.get_url = function get_url() {
@@ -253,7 +256,6 @@ var web_source = function(url) {
 
 var yql_source = function(query) {
     return function fetch_yql_source(callback) {
-        //console.log('start yql query for '+name);
         var kwargs = {data: {q: query, format: 'json'}};
         do_query('http://query.yahooapis.com/v1/public/yql', callback, kwargs);
     };
@@ -268,7 +270,6 @@ var input = function(name, fetch_or_data, process) {
     self = function(complete, retry) {
         self.name     = name;
         self.attempts = self.attempts + 1 || 1;
-        //console.log('Calling into input: '+name);
         var fetch_callback = function fetch_callback(err, data) {
             self.fetch_data = data; //may or may not be large
             if (err) {
@@ -319,7 +320,16 @@ var input = function(name, fetch_or_data, process) {
 // they can only write to it. Mostly this is because we don't know what will or won't
 // be present.
 
-// TODO: refactor to allow inputs without fetches. pass in DOM/global-level input data
+// Input refactor steps/notes:
+// 1. Make specialized inputs with template-like URLs
+// 2. All inputs are constructed with a context dictionary or precomputed data as the
+//    only argument. The return is a callable object that can be enqueued.
+// 3. Make web_input and yql_input contextualize the query (the input constructor passes
+//    through the context)
+// 4. What goes into a context? Title, Article ID, Rev ID, more? Input-specific stuff?
+//    Can it all be determined at input runtime or is there some horrible uninternalized
+//    state?
+// 5. Have a default list of input constructors for convenience.
 var make_evaluator = function(dom, rewards, callback, mq) {
 
     var self          = {};
@@ -353,7 +363,6 @@ var make_evaluator = function(dom, rewards, callback, mq) {
         
         for(var i=0; i<self.inputs.length; ++i) {
             mq.enqueue(self.inputs[i], results_group());
-            //self.inputs[i]();
         }
         
     }, function calculate_results(err, completed_inputs) {
@@ -369,7 +378,6 @@ var make_evaluator = function(dom, rewards, callback, mq) {
                 console.log('Input failed: '+ cur_input.name + ' with error: ' + cur_input.error + ' after ' + cur_input.attempts + ' attempts.');
                 self.failed_inputs.push(cur_input);
             } else {
-                //console.log('Input succeeded: '+cur_input.name);
                 for (var prop in cur_input.results) {
                     merged_data[prop] = cur_input.results[prop];
                 }
@@ -820,14 +828,18 @@ function prepare_window_node(err, kwargs, callback) {
 }
 
 function get_category(name, limit) {
+    // create/open file
+    // retrieve article list, paging through if necessary
+    
+
+
     console.log('getting up to '+limit+' articles for '+name);
     Step( function get_article_names() {
-        var url = 'http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=' 
-                   + encodeURIComponent(name) 
-                   + '&prop=info&gcmlimit=' 
-                   + encodeURIComponent(limit) + '&format=json';
-        do_query(url,
-            this);
+            var url = 'http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=' 
+                       + encodeURIComponent(name) 
+                       + '&prop=info&gcmlimit=' 
+                       + encodeURIComponent(limit) + '&format=json';
+            do_query(url, this);
         }, function evaluate_articles(err, data) {
             if (err) {
                 console.log('Could not retrieve category list: '+name+'.');
@@ -859,7 +871,6 @@ function get_category(name, limit) {
             if (err) {
                 throw err;
             }
-            
             var filename = 'output_'+(new Date()).valueOf()+'.csv';
             output_csv(filename, evs);
         });
@@ -996,6 +1007,7 @@ function evaluate_article_node(article_title, article_id, rev_id, eval_callback)
             console.log("Start QV on "+article_title);
             
             var info_callback = this.parallel();
+            var content_callback = this.parallel();
             if (!article_id || !rev_id) {
                 // first order of business, wrap in processing function
                 info_callback = get_info_callback(info_callback); 
@@ -1015,7 +1027,7 @@ function evaluate_article_node(article_title, article_id, rev_id, eval_callback)
             var content_input = input('get_article_content',
                                       web_source('http://en.wikipedia.org/w/api.php?action=parse&page='+article_title+'&format=json&redirects=true')
                                       );
-            mq.enqueue(content_input, this.parallel());
+            mq.enqueue(content_input, content_callback);
         },
         function prepare_window(err, info_input, content_input) {
             if (err) {
