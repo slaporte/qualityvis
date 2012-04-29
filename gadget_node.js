@@ -21,18 +21,15 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
  
- // TODO: contextualized inputs
  // TODO: pass in precomputed data
  // TODO: save/replay queue?
- // TODO: logging refactor
  // TODO: free memory (start by deleting dom from evaluator)
  // TODO: stream process the evaluators in get_category
- // TODO: Section/subsection word count per paragraph
  
 // if this page is on a mediawiki site, change to testing to false:
 var testing = !(this.mw);
 
-var write_html_files = true; // make sure to create html folder
+var write_html_files = false; // make sure to create html folder
 
 var jsdom = require('jsdom');
 var dummy_window = jsdom.jsdom().createWindow();
@@ -45,6 +42,105 @@ var extend = $.extend;
 var global_timeout = 30000;
 var Step = require('./step.js');
 
+function keys(obj) {
+    var ret = [];
+    for(var k in obj) {
+        if (obj.hasOwnProperty(k)) {
+            ret.push(k);
+        }
+    }
+    return ret;
+}
+
+// TODO: register/save function?
+// TODO: (possibly related to ^) record/replay
+var queue = function(workers, name) {
+    var self = {};
+    name = name || 'Anonymous queue';
+    var process;
+    self.is_started = false;
+    self.pending = [];
+    self.enqueue = function(func, callback) {
+        self.pending.push({'func':func, 'callback':callback});
+        self.start();
+    };
+    self.stop = function() {
+        self.is_started = false;
+    };
+    self.start = function() {
+        self.is_started = true;
+        process();
+    };
+    self.cur_executing = 0;
+    self.max_executing = workers;
+    process = function process_task() {
+        if(self.cur_executing >= self.max_executing) {
+            return;
+        }
+        if(self.pending.length > 0) {
+            var n = self.pending.pop();
+            
+            var callback = function() {
+                console.log(name + ': Finished a task, '+self.cur_executing+' tasks still in flight. '+ self.pending.length + ' waiting.');
+                self.cur_executing -= 1;
+                process();
+                n.callback.apply(this, arguments);
+            };
+            var retry = function retry() {
+                var item_name = n.func.name || 'unknown queued function';
+                console.log(name + ': retrying '+ item_name);
+                self.enqueue(n.func, n.callback);
+            };
+            
+            self.cur_executing += 1;
+            try {
+                n.func(callback, retry);
+            } catch (exc){
+                console.log(name + ': Major failure :/ ');
+                callback(exc, null);
+            }
+        } else {
+            if (self.cur_executing === 0) {
+                self.stop();
+            }
+        }
+    };
+    return self;
+};
+
+var mq = queue(12, 'Query queue');
+var jsdomq = queue(12, 'JSDOM queue');
+
+var all_windows = [];
+var avail_windows = [];
+
+var init_windows = function(count, init_callback) {
+    var jsdom = require('jsdom');
+    
+    for (var i=0; i < count; ++i) {
+        jsdom.env({
+            html: "<html><body></body></html>",
+            done: function(errors, window) {
+                all_windows.push(window);
+                avail_windows.push(window);
+                if (all_windows.length == count) {
+                    init_callback();
+                }
+            }
+        });
+    }
+    return;
+};
+
+var get_window = function get_window() {
+    return avail_windows.pop();
+};
+
+var return_window = function return_window(window) {
+    avail_windows.push(window);
+    return;
+};
+
 if(testing === true) {
     //var article_title = 'Charizard';
     var cli = require('cli');
@@ -54,7 +150,9 @@ if(testing === true) {
     });
     
     cli.main(function(args, options) {
-        get_category(options.category_name, options.article_count);
+        init_windows(12, function() {
+            get_category(options.category_name, options.article_count);
+        });
     });
     
     //get_category('Category:Articles_with_inconsistent_citation_formats', 2);
@@ -134,75 +232,6 @@ var rewards = {
     //rewards.significance.paragraph_per_web_results = {};
     //rewrads.significance.paragraph_per_news_results = {};
     //rewards.significance = overStat(;
-};
-
-function keys(obj) {
-    var ret = [];
-    for(var k in obj) {
-        if (obj.hasOwnProperty(k)) {
-            ret.push(k);
-        }
-    }
-    return ret;
-}
-
-// TODO: register/save function?
-// TODO: (possibly related to ^) record/replay
-var queue = function(delay) {
-    delay = delay || 250;
-    var self = {};
-    var process, timer;
-    self.is_started = false;
-    self.pending = [];
-    self.enqueue = function(func, callback) {
-        self.pending.push({'func':func, 'callback':callback});
-        self.start();
-    };
-    self.stop = function() {
-        self.is_started = false;
-        timer = null;
-    };
-    self.start = function() {
-        if (!timer) {
-            self.is_started = true;
-            process();
-        }
-    };
-    self.cur_executing = 0;
-    self.max_executing = 12;
-    process = function process_task() {
-        if(self.cur_executing >= self.max_executing) {
-            return;
-        }
-        if(self.pending.length > 0) {
-            var n = self.pending.pop();
-            
-            var callback = function() {
-                console.log('Finished a task, '+self.cur_executing+' tasks still in flight. '+ self.pending.length + ' waiting.');
-                self.cur_executing -= 1;
-                process();
-                n.callback.apply(this, arguments);
-            };
-            var retry = function retry() {
-                var item_name = n.func.name || 'unknown queued function';
-                console.log('retrying '+ item_name);
-                self.enqueue(n.func, n.callback);
-            };
-            
-            self.cur_executing += 1;
-            try {
-                n.func(callback, retry);
-            } catch (exc){
-                console.log('Major failure :/ ');
-                callback(exc, null);
-            }
-        } else {
-            if (self.cur_executing === 0) {
-                self.stop();
-            }
-        }
-    };
-    return self;
 };
 
 var successful_queries = 0;
@@ -773,8 +802,6 @@ function prepare_window_node(err, kwargs, callback) {
         revision_id         = article_info.rev_id,
         text                = article.parse.text['*'];
     
-    var jsdom = require('jsdom');
-    
     if (write_html_files) {
         var fs       = require('fs');
         var out_file = fs.createWriteStream('html/'+article_title+'.html', {'flags': 'w', 'encoding':'utf8'});
@@ -784,12 +811,16 @@ function prepare_window_node(err, kwargs, callback) {
         out_file.write(text);
         out_file.destroySoon();
     }
+
+    var window = get_window();
+    window.innerHTML = text;
     
-    /*var window = {};
+    window.jQuery = jq_lib.create(window);
     var real_values = {
         'wgTitle': article_title,
         'wgArticleId': article_id,
-        'wgCurRevisionId': revision_id
+        'wgCurRevisionId': revision_id,
+        'wgCategories': article.parse.categories
     };
 
     var mw = {}; //building a mock object to look like mw (loaded on wikipedia by javascript)
@@ -798,36 +829,12 @@ function prepare_window_node(err, kwargs, callback) {
         return real_values[key] || null;
     };
     window.mw = mw; //attach mock object to fake window
-    callback(null, window); */
-    
-    jsdom.env({
-        html: text,
-        done: function(errors, window) {
-            window.jQuery = jq_lib.create(window);
-            var real_values = {
-                'wgTitle': article_title,
-                'wgArticleId': article_id,
-                'wgCurRevisionId': revision_id,
-                'wgCategories': article.parse.categories
-            };
-
-            var mw = {}; //building a mock object to look like mw (loaded on wikipedia by javascript)
-            mw.config = {};
-            mw.config.get = function(key) {
-                return real_values[key] || null;
-            };
-            window.mw = mw; //attach mock object to fake window
-            callback(null, window);
-        }
-    });
+    callback(null, window);
 }
 
 function get_category(name, limit) {
     // create/open file
     // retrieve article list, paging through if necessary
-    
-
-
     console.log('getting up to '+limit+' articles for '+name);
     Step( function get_article_names() {
             var url = 'http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=' 
@@ -860,7 +867,14 @@ function get_category(name, limit) {
                 var article_title = infos[i].article_title,
                     article_id    = infos[i].article_id,
                     rev_id        = infos[i].rev_id;
-                evaluate_article_node(article_title, article_id, rev_id, articles_group());
+                
+                var gorrammit = function(article_title, article_id, rev_id) {
+                    return function eval_article_wrapper(queue_callback, retry) {
+                        evaluate_article_node(article_title, article_id, rev_id, queue_callback);
+                    }
+                };
+                
+                jsdomq.enqueue(gorrammit(article_title, article_id, rev_id), articles_group());
             }
         }, function output_evaluations(err, evs) {
             if (err) {
@@ -889,8 +903,6 @@ function print_page_stats(err, ev) {
         console.log('  - '+attr + ': ' + recos[attr].cur_stat + ';' + recos[attr].points);
     }
 }
-
-var mq = queue(50);
 
 function escape_field(val) {
     var out_arr = [];
@@ -1049,10 +1061,11 @@ function evaluate_article_node(article_title, article_id, rev_id, eval_callback)
                     throw err; //return //TODO how to give up?  
                 }
             } else {
-                if(evaluator.window) {
-                    evaluator.window.close();
-                    delete evaluator.window;
-                }
+                //if(evaluator.dom) {
+                //    evaluator.dom.close();
+                //    delete evaluator.dom;
+                //}
+                return_window(evaluator.dom); // This could be placed better but it is like 2AM
                 console.log('finished '+evaluator.article_title);
                 //print_page_stats(err, evaluator);
                 if (eval_callback) {
