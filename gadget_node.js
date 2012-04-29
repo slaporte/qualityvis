@@ -836,31 +836,67 @@ function get_category(name, limit) {
     // create/open file
     // retrieve article list, paging through if necessary
     console.log('getting up to '+limit+' articles for '+name);
-    Step( function get_article_names() {
-            var url = 'http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=' 
-                       + encodeURIComponent(name) 
-                       + '&prop=info&gcmlimit=' 
-                       + encodeURIComponent(limit) + '&format=json';
-            do_query(url, this);
-        }, function evaluate_articles(err, data) {
-            if (err) {
-                console.log('Could not retrieve category list: '+name+'.');
-                throw err;
+    
+    function get_article_names(cat_name, limit, get_names_callback, continue_str, results_so_far) {
+        var url = 'http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=' 
+                   + encodeURIComponent(cat_name) 
+                   + '&prop=info&gcmlimit=' 
+                   + encodeURIComponent(limit) + '&format=json';
+        if(continue_str) {
+            url += '&gcmcontinue='+continue_str;
+        }
+        
+        results_so_far = results_so_far || [];
+                   
+        function cat_results_callback(err, data) {
+            console.log('finished a category query');
+        
+            var pages, cont_str;
+            try {
+                cont_str = data['query-continue'].categorymembers.gcmcontinue;
+            } catch (e) {
+                cont_str = null;
             }
-            console.log('did the category query');
-            var pages = data.query.pages;
-            var infos = [];
+            // get page infos from data
+            try {
+                pages = data.query.pages;
+            } catch (e) {
+                pages = {};
+                console.log('Error finding pages in query results.');
+            }
 
             console.log(keys(pages).length + ' total pages got.');
+            var n0_count = 0;
             for(var key in pages){
                 var page = pages[key];
                 if(page.ns === 0) {
-                    infos.push({'article_title': page.title.replace(/\s/g,'_'),
-                                'article_id'   : page.pageid,
-                                'rev_id'       : page.lastrevid
-                                });
+                    results_so_far.push({'article_title': page.title.replace(/\s/g,'_'),
+                                        'article_id'   : page.pageid,
+                                        'rev_id'       : page.lastrevid
+                                        });
+                } else {
+                    n0_count += 1;
                 }
             }
+            console.log('Skipped '+n0_count+' non-zero namespaced articles');
+            
+            //if not has continue || limit reached, call the real callback (aka evaluate articles)
+            if (!cont_str || results_so_far.length >= limit) {
+                get_names_callback(null, results_so_far);
+            } else {
+                get_article_names(cat_name, limit, get_names_callback, cont_str, results_so_far);
+            }
+        };
+        do_query(url, cat_results_callback);
+    }
+    
+    function evaluate_articles_wrapper(err, infos) {
+        Step(function evaluate_articles(/*err, infos*/) {
+            if (err) {
+                console.log('Could not retrieve category list.');
+                throw err;
+            }
+
             console.log(infos.length + ' processable infos got.');
             var articles_group = this.group();
             for (var i=0; i < infos.length; ++i) {
@@ -876,13 +912,15 @@ function get_category(name, limit) {
                 
                 jsdomq.enqueue(gorrammit(article_title, article_id, rev_id), articles_group());
             }
-        }, function output_evaluations(err, evs) {
-            if (err) {
-                throw err;
-            }
-            var filename = 'output_'+(new Date()).valueOf()+'.csv';
-            output_csv(filename, evs);
+            }, function output_evaluations(err, evs) {
+                if (err) {
+                    throw err;
+                }
+                var filename = 'output_'+(new Date()).valueOf()+'.csv';
+                output_csv(filename, evs);
         });
+    }
+    get_article_names(name, limit, evaluate_articles_wrapper);
 }
 
 function print_page_stats(err, ev) {
