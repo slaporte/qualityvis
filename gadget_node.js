@@ -38,9 +38,11 @@ var jq_lib = require('jquery');
 var $ = jq_lib.create(dummy_window);
     $.support.cors = true;
 var extend = $.extend;
-
-var global_timeout = 30000;
 var Step = require('./step.js');
+
+var GLOBAL_TIMEOUT     = 5000; //ms
+var GLOBAL_RETRY_COUNT = 2;
+
 
 function keys(obj) {
     var ret = [];
@@ -54,12 +56,16 @@ function keys(obj) {
 
 // TODO: register/save function?
 // TODO: (possibly related to ^) record/replay
-var queue = function(workers, name) {
+var queue = function(workers, description) {
     var self = {};
-    name = name || 'Anonymous queue';
-    var process;
-    self.is_started = false;
-    self.pending = [];
+    queue_desc = description || 'Anonymous queue';
+    
+    self.desc          = queue_desc;
+    self.is_started    = false;
+    self.pending       = [];
+    self.cur_executing = 0;
+    self.max_executing = workers;
+    
     self.enqueue = function(func, callback) {
         self.pending.push({'func':func, 'callback':callback});
         self.start();
@@ -71,32 +77,42 @@ var queue = function(workers, name) {
         self.is_started = true;
         process();
     };
-    self.cur_executing = 0;
-    self.max_executing = workers;
-    process = function process_task() {
-        if(self.cur_executing >= self.max_executing) {
+    
+    var get_retry = function get_retry(task) {
+        return function task_retry() {
+            var item_name = task.func.desc || 'unknown queued function';
+            //console.log(queue_desc + ': Retrying a task, '+self.cur_executing+' tasks still in flight. '+ self.pending.length + ' waiting.');
+            //console.log(queue_desc + ': retrying '+ item_name);
+            //if (task.func.attempts) {
+            //    console.log('   - ('+task.func.attempts+' attempts)');
+            //}
+            self.cur_executing -= 1;
+            self.enqueue(task.func, task.callback);
+        };
+    };
+    var get_callback = function get_callback(task) {
+        return function task_callback() {
+            console.log(queue_desc + ': Finished a task, '+self.cur_executing+' tasks still in flight. '+ self.pending.length + ' waiting.');
+            self.cur_executing -= 1;
+            process();
+            task.callback.apply(this, arguments);
+        };
+    };
+    var process = function process() {
+        if (self.cur_executing >= self.max_executing) {
             return;
         }
-        if(self.pending.length > 0) {
+        if (self.pending.length > 0) {
             var n = self.pending.pop();
             
-            var callback = function() {
-                console.log(name + ': Finished a task, '+self.cur_executing+' tasks still in flight. '+ self.pending.length + ' waiting.');
-                self.cur_executing -= 1;
-                process();
-                n.callback.apply(this, arguments);
-            };
-            var retry = function retry() {
-                var item_name = n.func.name || 'unknown queued function';
-                console.log(name + ': retrying '+ item_name);
-                self.enqueue(n.func, n.callback);
-            };
+            var callback = get_callback(n);
+            var retry = get_retry(n);
             
             self.cur_executing += 1;
             try {
                 n.func(callback, retry);
             } catch (exc){
-                console.log(name + ': Major failure :/ ');
+                console.log(queue_desc + ': Major failure :/ ');
                 callback(exc, null);
             }
         } else {
@@ -108,7 +124,7 @@ var queue = function(workers, name) {
     return self;
 };
 
-var mq = queue(12, 'Query queue');
+var mq = queue(5, 'Query queue');
 var jsdomq = queue(12, 'JSDOM queue');
 
 var all_windows = [];
@@ -243,7 +259,7 @@ function do_query(url, complete_callback, kwargs) {
         url: url,
         type: 'get',
         dataType: 'json',
-        timeout: global_timeout, // TODO: convert to setting. Necessary to detect jsonp error.
+        timeout: GLOBAL_TIMEOUT, //for detecting jsonp errors
         success: function(data) {
             successful_queries++;
             console.log(successful_queries + ' successful queries.');
@@ -256,11 +272,12 @@ function do_query(url, complete_callback, kwargs) {
         },
         error: function(jqXHR, textStatus, errorThrown) {
             failed_queries++;
-            console.log(failed_queries + ' failed queries.' + url);
+            console.log(failed_queries + ' failed queries: ' + url);
             complete_callback(errorThrown, null);
         },
         complete: function(jqXHR, textStatus) {
             // TODO: error handling (jsonp doesn't get error() calls for a lot of errors)
+            complete_queries++;
         },
         headers: { 'User-Agent': 'QualityVis/0.0.0 Mahmoud Hashemi makuro@gmail.com' }
     };
@@ -290,43 +307,56 @@ var yql_source = function(query) {
     };
 };
 
+var grokse_input = function(context) {
+    var self;
+    
+    self = {
+        type: 'Grokse',
+        desc: 'Grokse for '+context.article_title,
+        fetch: null,
+        calculate: null
+    };
+    return self;
+};//input('grokseStats', yql_source('select * from json where url ="http://stats.grok.se/json/en/201201/' + article_title + '"'), grokseStats)
+
+
 // TODO configurable retry failure. at least retry in a couple seconds.
 // complete is called on the input actually completely finishing (success/fatal error)
 // ind_complete is called for an individual call's completion (retry)
-var input = function(name, fetch_or_data, process) {
+var input = function input(desc, fetch_or_data, process) {
     var self;
 
-    self = function(complete, retry) {
-        self.name     = name;
+    self = function self(complete, retry) {
+        self.desc     = desc;
         self.attempts = self.attempts + 1 || 1;
         var fetch_callback = function fetch_callback(err, data) {
             self.fetch_data = data; //may or may not be large
             if (err) {
-                console.log('failed fetch on: '+name+' '+err);
-                self.error = 'Failed to fetch data for '+name;
-                if (self.attempts < 3) {
+                //console.log('failed fetch on: '+desc+' '+err);
+                self.error = 'Failed to fetch data for '+desc;
+                if (self.attempts <= GLOBAL_RETRY_COUNT) {
                     retry();
                 } else {
-                    complete(null, self);  // err?
+                    complete(self.desc+' exceeded attempt limit', null);  // err?
                 }
-            }
-            
-            try {
-                if (process) {
-                    self.results = process(data);
-                } else {
-                    self.results = data;
+            } else {
+                try {
+                    if (process) {
+                        self.results = process(data);
+                    } else {
+                        self.results = data;
+                    }
+                } catch (proc_err) {
+                    self.results = null;
+                    self.error = 'Failed to process data for '+desc;
+                    console.log(self.error);
                 }
-            } catch (proc_err) {
-                self.results = null;
-                self.error = 'Failed to process data for '+name;
-                console.log(self.error);
-            }
-            try {
-                complete(null, self);
-            } catch(myerr) {
-                console.log('foo: ' + myerr);
-                throw err;
+                try {
+                    complete(null, self);
+                } catch(myerr) {
+                    console.log('input error: ' + myerr);
+                    complete(myerr, null);
+                }
             }
         };
         
@@ -345,9 +375,7 @@ var input = function(name, fetch_or_data, process) {
     return self;
 };
 
-// One limitation on this model (easily refactored): calculators can't read from data
-// they can only write to it. Mostly this is because we don't know what will or won't
-// be present.
+
 
 // Input refactor steps/notes:
 // 1. Make specialized inputs with template-like URLs
@@ -418,11 +446,7 @@ var make_evaluator = function(dom, rewards, callback, mq) {
         if (err) {
             throw err;
         }
-        var fail_count = self.failed_inputs.length;
-
-        if (fail_count > 0) {
-            console.log('\nWarning: There were ' + fail_count + ' failed inputs.\n');
-        }
+        
         self.results = calc_scores(page_data, rewards);
 
         for(var i=0; i < callbacks.length; ++i) {
@@ -500,6 +524,12 @@ var make_evaluator = function(dom, rewards, callback, mq) {
     
     return self;
 };
+
+// Start calculation functions
+
+// One limitation on this model (easily refactored): calculators can't read from data
+// they can only write to it. Mostly this is because we don't know what will or won't
+// be present.
 
 function domStats(dom) {
     var ret = {},
@@ -687,8 +717,6 @@ function revisionStats(data) {
     return data;
 }
 
-// Start calculation functions
-
 function inLinkStats(data) {
     //TODO: if there are 500 backlinks, we need to make another query
     var ret = {};
@@ -836,7 +864,7 @@ function get_category(name, limit) {
     // create/open file
     // retrieve article list, paging through if necessary
     console.log('getting up to '+limit+' articles for '+name);
-    
+    var failures = [];
     function get_article_names(cat_name, limit, get_names_callback, continue_str, results_so_far) {
         var url = 'http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=' 
                    + encodeURIComponent(cat_name) 
@@ -904,20 +932,41 @@ function get_category(name, limit) {
                     article_id    = infos[i].article_id,
                     rev_id        = infos[i].rev_id;
                 
-                var gorrammit = function(article_title, article_id, rev_id) {
+                var get_eval_wrapper = function(article_title, article_id, rev_id) {
                     return function eval_article_wrapper(queue_callback, retry) {
                         evaluate_article_node(article_title, article_id, rev_id, queue_callback);
                     }
                 };
-                
-                jsdomq.enqueue(gorrammit(article_title, article_id, rev_id), articles_group());
+                var get_group_wrapper = function(article_title, group_callback) {
+                    return function article_group_wrapper(err, evaluator) {
+                        if (err) {
+                            console.log('Failed to process article: '+article_title+'. Dropping evaluator.');
+                            failures.push(article_title);
+                            group_callback(null, null);
+                        } else {
+                            group_callback(null, evaluator);
+                        }
+                    }
+                }
+                jsdomq.enqueue(get_eval_wrapper(article_title, article_id, rev_id), 
+                               get_group_wrapper(article_title, articles_group()));
             }
             }, function output_evaluations(err, evs) {
                 if (err) {
                     throw err;
                 }
                 var filename = 'output_'+(new Date()).valueOf()+'.csv';
-                output_csv(filename, evs);
+                var successful_evs = [];
+                for (var i=0; i<evs.length; i++) {
+                    // dropping failed evaluators
+                    if (evs[i]) {
+                        successful_evs.push(evs[i]);
+                    }
+                }
+                var total_evals = successful_evs.length + failures.length;
+                console.log(failures.length+'/'+total_evals+' evaluations failed:');
+                console.log(failures);
+                output_csv(filename, successful_evs);
         });
     }
     get_article_names(name, limit, evaluate_articles_wrapper);
@@ -963,9 +1012,10 @@ function is_outputtable(val) {
 }
 
 var article_deets = ['article_title', 'article_id', 'revision_id'];
-function output_csv(path, evs, callback) {
+function output_csv(path, evs/*, callback*/) {
     //TODO: add run date, other metadata in csv comment
     //TODO: use async?
+    
     //construct superset of stats for column headings
     var col_names, tmp_names = {};
     for (var i=0; i<evs.length; ++i) {
@@ -1025,7 +1075,7 @@ function get_info_callback(real_callback) {
     return function(err, data) {
         var get_info_failed = (err || !(data && data.query));
         if (get_info_failed) {
-            console.log('error getting info. maybe timed out?');
+            console.log('error getting article info. maybe timed out?');
             return;
         } 
         var page_ids = keys(data.query.pages),
