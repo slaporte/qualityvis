@@ -40,9 +40,10 @@ var $ = jq_lib.create(dummy_window);
 var extend = $.extend;
 var Step = require('./step.js');
 
-var GLOBAL_TIMEOUT     = 5000; //ms
-var GLOBAL_RETRY_COUNT = 2;
-
+var GLOBAL_TIMEOUT     = 6000; //ms
+var GLOBAL_RETRY_COUNT = 3;
+var DOM_CONCURRENCY    = 5;
+var QUERY_CONCURRENCY  = 5;
 
 function keys(obj) {
     var ret = [];
@@ -92,7 +93,9 @@ var queue = function(workers, description) {
     };
     var get_callback = function get_callback(task) {
         return function task_callback() {
-            console.log(queue_desc + ': Finished a task, '+self.cur_executing+' tasks still in flight. '+ self.pending.length + ' waiting.');
+            if (self.desc == 'JSDOM queue') {
+                console.log(self.desc + ': Finished a task, '+self.cur_executing+' tasks still in flight. '+ self.pending.length + ' waiting.');
+            }
             self.cur_executing -= 1;
             process();
             task.callback.apply(this, arguments);
@@ -112,7 +115,7 @@ var queue = function(workers, description) {
             try {
                 n.func(callback, retry);
             } catch (exc){
-                console.log(queue_desc + ': Major failure :/ ');
+                console.log(queue_desc + ': Major failure :/ ' + n.desc);
                 callback(exc, null);
             }
         } else {
@@ -124,8 +127,8 @@ var queue = function(workers, description) {
     return self;
 };
 
-var mq = queue(5, 'Query queue');
-var jsdomq = queue(12, 'JSDOM queue');
+var mq = queue(QUERY_CONCURRENCY, 'Query queue');
+var jsdomq = queue(DOM_CONCURRENCY, 'JSDOM queue');
 
 var all_windows = [];
 var avail_windows = [];
@@ -148,11 +151,24 @@ var init_windows = function(count, init_callback) {
     return;
 };
 
-var get_window = function get_window() {
-    return avail_windows.pop();
+var window_gets = 0;
+var eval_registry = {};
+var get_window = function get_window(title) {
+    var ret = avail_windows.pop();
+    window_gets++;
+    if (!ret) {
+        console.log('oh man. '+title+' is in trubbz.');
+    } else {
+        if (window_gets % 25 == 0) {
+            console.log(keys(eval_registry));
+        }
+        eval_registry[title] = ret;
+    }
+    return ret;
 };
 
-var return_window = function return_window(window) {
+var release_window = function release_window(window, title) {
+    delete eval_registry[title];
     avail_windows.push(window);
     return;
 };
@@ -166,7 +182,7 @@ if(testing === true) {
     });
     
     cli.main(function(args, options) {
-        init_windows(12, function() {
+        init_windows(DOM_CONCURRENCY, function() {
             get_category(options.category_name, options.article_count);
         });
     });
@@ -262,9 +278,9 @@ function do_query(url, complete_callback, kwargs) {
         timeout: GLOBAL_TIMEOUT, //for detecting jsonp errors
         success: function(data) {
             successful_queries++;
-            console.log(successful_queries + ' successful queries.');
             if (successful_queries % 20 === 0) {
                 var util = require('util');
+                console.log(successful_queries + ' successful queries.');
                 console.log('Memory stats:');
                 console.log(util.inspect(process.memoryUsage()));
             }
@@ -331,14 +347,11 @@ var input = function input(desc, fetch_or_data, process) {
         self.attempts = self.attempts + 1 || 1;
         var fetch_callback = function fetch_callback(err, data) {
             self.fetch_data = data; //may or may not be large
-            if (err) {
+            if (err || !data) {
                 //console.log('failed fetch on: '+desc+' '+err);
-                self.error = 'Failed to fetch data for '+desc;
-                if (self.attempts <= GLOBAL_RETRY_COUNT) {
-                    retry();
-                } else {
-                    complete(self.desc+' exceeded attempt limit', null);  // err?
-                }
+                self.results = null;
+                err = err || 'Unknown error';
+                self.error = 'Fetch failed on'+self.desc+': '+err;
             } else {
                 try {
                     if (process) {
@@ -348,14 +361,29 @@ var input = function input(desc, fetch_or_data, process) {
                     }
                 } catch (proc_err) {
                     self.results = null;
-                    self.error = 'Failed to process data for '+desc;
-                    console.log(self.error);
+                    self.error = 'Processing failed on '+self.desc+': '+proc_err;
+                    //console.log(self.error);
                 }
+            }
+            if (self.results) {
                 try {
                     complete(null, self);
-                } catch(myerr) {
-                    console.log('input error: ' + myerr);
-                    complete(myerr, null);
+                } catch (myerr) {
+                    self.results = null;
+                    self.error = 'Exception while completing '+self.desc+', somehow: '+myerr;
+                    complete(null, self);
+                }
+            } else {
+                if (self.attempts <= GLOBAL_RETRY_COUNT) {
+                    retry();
+                } else {
+                    self.results = null;
+                    if (self.error) {
+                        self.error += '('+self.attempts+' attempts)';
+                    } else {
+                        self.error = self.desc+' encountered unknown error, failed after '+self.attempts+' retries.';
+                    }
+                    complete(null, self);
                 }
             }
         };
@@ -431,8 +459,11 @@ var make_evaluator = function(dom, rewards, callback, mq) {
         var merged_data = {};
         for (var i = 0; i < completed_inputs.length; ++i) {
             var cur_input = completed_inputs[i];
-            if (!cur_input.results && cur_input.error) {
-                console.log('Input failed: '+ cur_input.name + ' with error: ' + cur_input.error + ' after ' + cur_input.attempts + ' attempts.');
+            if (!cur_input.results) {
+                var err_str = 'Input failed: '+ cur_input.desc;
+                if (cur_input.error && cur_input.attempts) {
+                    err_str += ' with error: ' + cur_input.error + ' after ' + cur_input.attempts + ' attempts.';
+                }
                 self.failed_inputs.push(cur_input);
             } else {
                 for (var prop in cur_input.results) {
@@ -441,16 +472,25 @@ var make_evaluator = function(dom, rewards, callback, mq) {
             }
         }
         self.data = merged_data;
-        return merged_data;
-    }, function eval_complete(err, page_data) {
-        if (err) {
-            throw err;
-        }
+        self.results = calc_scores(merged_data, rewards);
         
-        self.results = calc_scores(page_data, rewards);
-
-        for(var i=0; i < callbacks.length; ++i) {
-            callbacks[i](null, self); //call all the on_complete callbacks
+        return self.results;
+        
+    }, function eval_complete(err, eval_results) {
+        if (err) {
+            var err_type = typeof(err);
+            if (err_type != 'object' && err_type != 'function') {
+                err = new Error(err);
+            }
+            err.dom = self.dom;
+            
+            for(var i=0; i < callbacks.length; ++i) {
+                callbacks[i](err, null); //call all the on_complete callbacks
+            }
+        } else {
+            for(var i=0; i < callbacks.length; ++i) {
+                callbacks[i](null, self); //call all the on_complete callbacks
+            }
         }
     });
     
@@ -840,7 +880,7 @@ function prepare_window_node(err, kwargs, callback) {
         out_file.destroySoon();
     }
 
-    var window = get_window();
+    var window = get_window(article_title);
     window.innerHTML = text;
     
     window.jQuery = jq_lib.create(window);
@@ -942,8 +982,10 @@ function get_category(name, limit) {
                         if (err) {
                             console.log('Failed to process article: '+article_title+'. Dropping evaluator.');
                             failures.push(article_title);
+                            release_window(err.dom, article_title);
                             group_callback(null, null);
                         } else {
+                            release_window(evaluator.dom, article_title);
                             group_callback(null, evaluator);
                         }
                     }
@@ -1149,13 +1191,7 @@ function evaluate_article_node(article_title, article_id, rev_id, eval_callback)
                     throw err; //return //TODO how to give up?  
                 }
             } else {
-                //if(evaluator.dom) {
-                //    evaluator.dom.close();
-                //    delete evaluator.dom;
-                //}
-                return_window(evaluator.dom); // This could be placed better but it is like 2AM
-                console.log('finished '+evaluator.article_title);
-                //print_page_stats(err, evaluator);
+                console.log('Successfully finished '+evaluator.article_title);
                 if (eval_callback) {
                     eval_callback(null, evaluator);
                 }
