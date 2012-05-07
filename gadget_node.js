@@ -21,15 +21,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
  
- // TODO: pass in precomputed data
  // TODO: save/replay queue?
  // TODO: free memory (start by deleting dom from evaluator)
  // TODO: stream process the evaluators in get_category
  
-// if this page is on a mediawiki site, change to testing to false:
 var testing = !(this.mw);
 
-var write_html_files = false; // make sure to create html folder
 
 var jsdom = require('jsdom');
 var dummy_window = jsdom.jsdom().createWindow();
@@ -40,10 +37,15 @@ var $ = jq_lib.create(dummy_window);
 var extend = $.extend;
 var Step = require('./step.js');
 
-var GLOBAL_TIMEOUT     = 6000; //ms
-var GLOBAL_RETRY_COUNT = 3;
-var DOM_CONCURRENCY    = 5;
-var QUERY_CONCURRENCY  = 5;
+// these can be overridden at the command line. node gadget_node.js --help for
+// more information
+var DEFAULT_ARTICLE_COUNT = 5;
+var DEFAULT_CATEGORY      = 'Category:Featured_articles';
+var GLOBAL_TIMEOUT        = 6000; // milliseconds
+var GLOBAL_RETRY_COUNT    = 3;
+var EV_CONCURRENCY        = 10;
+var QUERY_CONCURRENCY     = 8;
+var OUTPUT_HTML           = false;
 
 function keys(obj) {
     var ret = [];
@@ -128,7 +130,7 @@ var queue = function(workers, description) {
 };
 
 var mq = queue(QUERY_CONCURRENCY, 'Query queue');
-var jsdomq = queue(DOM_CONCURRENCY, 'JSDOM queue');
+var jsdomq = queue(EV_CONCURRENCY, 'Evaluator queue');
 
 var all_windows = [];
 var avail_windows = [];
@@ -140,6 +142,7 @@ var init_windows = function(count, init_callback) {
         jsdom.env({
             html: "<html><body></body></html>",
             done: function(errors, window) {
+                jq_lib.create(window);
                 all_windows.push(window);
                 avail_windows.push(window);
                 if (all_windows.length == count) {
@@ -177,12 +180,21 @@ if(testing === true) {
     //var article_title = 'Charizard';
     var cli = require('cli');
     cli.parse({
-        article_count: ['n', 'Number of articles to fetch', 'number', 5],
-        category_name: ['c', 'Category of articles to fetch', 'string', 'Category:Featured_articles']
+        article_count:      ['n', 'Number of articles to fetch', 'number', DEFAULT_ARTICLE_COUNT]
+        ,category_name:     ['c', 'Category of articles to fetch', 'string', DEFAULT_CATEGORY]
+        ,evaluator_workers: ['E', 'Number of evaluators to process simultaneously', 'number', EV_CONCURRENCY]
+        ,query_workers:     ['Q', 'Number of web queries to fetch simultaneously', 'number', QUERY_CONCURRENCY]
+        ,global_timeout:    ['T', 'Amount of time to wait for web queries (in milliseconds)', 'number', GLOBAL_TIMEOUT]
+        
     });
     
     cli.main(function(args, options) {
-        init_windows(DOM_CONCURRENCY, function() {
+        // update global constants
+        EV_CONCURRENCY    = options.evaluator_workers;
+        QUERY_CONCURRENCY = options.query_workers;
+        GLOBAL_TIMEOUT    = options.global_timeout;
+        
+        init_windows(EV_CONCURRENCY * 2, function() { //TODO: (sorta-hack) maybe stop creating extra DOM windows?
             get_category(options.category_name, options.article_count);
         });
     });
@@ -870,20 +882,19 @@ function prepare_window_node(err, kwargs, callback) {
         revision_id         = article_info.rev_id,
         text                = article.parse.text['*'];
     
-    if (write_html_files) {
+    if (OUTPUT_HTML) { //TODO: create folder, escape article_title
         var fs       = require('fs');
-        var out_file = fs.createWriteStream('html/'+article_title+'.html', {'flags': 'w', 'encoding':'utf8'});
+        var out_file = fs.createWriteStream('article_html/'+article_title+'.html', {'flags': 'w', 'encoding':'utf8'});
         if (typeof out_file.setEncoding === 'function') {
-            out_file.setEncoding('utf-8');
+            out_file.setEncoding('utf8');
         }
-        out_file.write(text);
+        out_file.write(text, 'utf8');
         out_file.destroySoon();
     }
 
     var window = get_window(article_title);
-    window.innerHTML = text;
+    window.document.innerHTML = '<html><body>'+text+'</body></html>';
     
-    window.jQuery = jq_lib.create(window);
     var real_values = {
         'wgTitle': article_title,
         'wgArticleId': article_id,
@@ -966,6 +977,9 @@ function get_category(name, limit) {
             }
 
             console.log(infos.length + ' processable infos got.');
+            
+            var json_output = get_json_output();
+            
             var articles_group = this.group();
             for (var i=0; i < infos.length; ++i) {
                 var article_title = infos[i].article_title,
@@ -973,7 +987,7 @@ function get_category(name, limit) {
                     rev_id        = infos[i].rev_id;
                 
                 var get_eval_wrapper = function(article_title, article_id, rev_id) {
-                    return function eval_article_wrapper(queue_callback, retry) {
+                    return function eval_article_wrapper(queue_callback, retry) { //TODO: use this retry?
                         evaluate_article_node(article_title, article_id, rev_id, queue_callback);
                     }
                 };
@@ -986,6 +1000,7 @@ function get_category(name, limit) {
                             group_callback(null, null);
                         } else {
                             release_window(evaluator.dom, article_title);
+                            json_output(null, evaluator);
                             group_callback(null, evaluator);
                         }
                     }
@@ -1086,7 +1101,7 @@ function output_csv(path, evs/*, callback*/) {
     var fs       = require('fs');
     var out_file = fs.createWriteStream(path, {'flags': 'w', 'encoding':'utf8'});
     if (typeof out_file.setEncoding === 'function') {
-        out_file.setEncoding('utf-8');
+        out_file.setEncoding('utf8');
     }
     
     out_file.write(col_names.join(','));
@@ -1112,6 +1127,29 @@ function output_csv(path, evs/*, callback*/) {
     //callback();
 }
 
+function get_json_output(path) {
+    var fs       = require('fs');
+    var path     = path || 'output_'+(new Date()).valueOf()+'.json';
+    var all_ev_outputs = {};
+    return function save_ev(err, ev) {
+        var to_save = { article_title: ev.article_title,
+                        article_id:    ev.article_id,
+                        revision_id:   ev.revision_id};
+        for ( stat in ev.data ) {
+            if (ev.data[stat] !== null && is_outputtable(ev.data[stat])) {
+                to_save[stat] = ev.data[stat];
+            }
+        }
+        
+        var out_file = fs.createWriteStream(path, {'flags': 'w', 'encoding':'utf8'});
+        if (typeof out_file.setEncoding === 'function') {
+            out_file.setEncoding('utf8');
+        }
+        all_ev_outputs[ev.article_title] = to_save;
+        out_file.write(JSON.stringify(all_ev_outputs));
+        out_file.destroySoon();
+    };
+}
 
 function get_info_callback(real_callback) {
     return function(err, data) {
@@ -1169,7 +1207,7 @@ function evaluate_article_node(article_title, article_id, rev_id, eval_callback)
         function prepare_window(err, info_input, content_input) {
             if (err) {
                 console.log('Error retrieving info for article "'+article_title+'"');
-                throw err; //return //TODO how to give up?
+                throw err;
             }
             prepare_window_node(err, {'article_info': info_input.results,
                                       'article': content_input.results},
@@ -1188,7 +1226,7 @@ function evaluate_article_node(article_title, article_id, rev_id, eval_callback)
                 if(eval_callback) {
                     eval_callback(err, null);
                 } else {
-                    throw err; //return //TODO how to give up?  
+                    throw err;
                 }
             } else {
                 console.log('Successfully finished '+evaluator.article_title);

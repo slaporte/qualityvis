@@ -5,5 +5,8 @@ pub/
 .\#*
 \#*\#
 *.csv
+*.json
+log*
+article_html/*.html
 
 node_modules
