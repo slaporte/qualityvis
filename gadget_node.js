@@ -161,8 +161,9 @@ var get_window = function get_window(title) {
     window_gets++;
     if (!ret) {
         console.log('oh man. '+title+' is in trubbz.');
+        console.log(keys(eval_registry));
     } else {
-        if (window_gets % 25 == 0) {
+        if (window_gets % 10 == 0) {
             console.log(keys(eval_registry));
         }
         eval_registry[title] = ret;
@@ -171,8 +172,13 @@ var get_window = function get_window(title) {
 };
 
 var release_window = function release_window(window, title) {
+    if (window) {
+        avail_windows.push(window);
+    } else {
+        console.log(title+" ain't got nothin we need.");
+    }
     delete eval_registry[title];
-    avail_windows.push(window);
+    
     return;
 };
 
