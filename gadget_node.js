@@ -45,7 +45,10 @@ var GLOBAL_TIMEOUT        = 6000; // milliseconds
 var GLOBAL_RETRY_COUNT    = 3;
 var EV_CONCURRENCY        = 10;
 var QUERY_CONCURRENCY     = 8;
+var CAT_CONCURRENCY       = 2;
 var OUTPUT_HTML           = false;
+
+var ALL_CATS = Infinity;
 
 function keys(obj) {
     var ret = [];
@@ -57,14 +60,24 @@ function keys(obj) {
     return ret;
 }
 
+function values(obj) {
+    var ret = [];
+    for(var k in obj) {
+        if (obj.hasOwnProperty(k)) {
+            ret.push(ret[k]);
+        }
+    }
+    return ret;
+}
+
 // TODO: register/save function?
 // TODO: (possibly related to ^) record/replay
-var queue = function(workers, description) {
+var queue = function queue(workers, description) {
     var self = {};
     queue_desc = description || 'Anonymous queue';
     
     self.desc          = queue_desc;
-    self.is_started    = false;
+    self.is_processing    = false;
     self.pending       = [];
     self.cur_executing = 0;
     self.max_executing = workers;
@@ -74,10 +87,10 @@ var queue = function(workers, description) {
         self.start();
     };
     self.stop = function() {
-        self.is_started = false;
+        self.is_processing = false;
     };
     self.start = function() {
-        self.is_started = true;
+        self.is_processing = true;
         process();
     };
     
@@ -131,6 +144,7 @@ var queue = function(workers, description) {
 
 var mq = queue(QUERY_CONCURRENCY, 'Query queue');
 var jsdomq = queue(EV_CONCURRENCY, 'Evaluator queue');
+var catq = queue(CAT_CONCURRENCY, 'Category queue');
 
 var all_windows = [];
 var avail_windows = [];
@@ -201,12 +215,9 @@ if(testing === true) {
         GLOBAL_TIMEOUT    = options.global_timeout;
         
         init_windows(EV_CONCURRENCY * 2, function() { //TODO: (sorta-hack) maybe stop creating extra DOM windows?
-            get_category(options.category_name, options.article_count);
+            evaluate_category(options.category_name, options.article_count);
         });
     });
-    
-    //get_category('Category:Articles_with_inconsistent_citation_formats', 2);
-    //get_category('Category:FA-Class_articles', 50);
 } else {
     var article_title = mw.config.get('wgTitle');
     var revid = mw.config.get('wgCurRevisionId');
@@ -917,64 +928,127 @@ function prepare_window_node(err, kwargs, callback) {
     callback(null, window);
 }
 
-function get_category(name, limit) {
+// This is a lower-level function, you probably want to use get_category()
+function get_category_members(cat_name, limit, get_cm_callback, continue_str, results_so_far) {
+    var url = 'http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=' 
+               + encodeURIComponent(cat_name) 
+               + '&prop=info&gcmlimit=' 
+               + encodeURIComponent(limit) + '&format=json';
+    if(continue_str) {
+        url += '&gcmcontinue='+continue_str;
+    }
+    
+    results_so_far = results_so_far || [];
+    console.log(cat_name);
+    function cat_results_callback(err, data) {
+        console.log('finished a category query');
+    
+        var pages, cont_str;
+        try {
+            cont_str = data['query-continue'].categorymembers.gcmcontinue;
+        } catch (e) {
+            cont_str = null;
+        }
+        // get page infos from data
+        try {
+            pages = data.query.pages;
+        } catch (e) {
+            pages = {};
+            console.log('Error finding pages in query results.');
+        }
+
+        console.log(keys(pages).length + ' total pages got.');
+        
+        for(var key in pages){
+            var page = pages[key];
+            results_so_far.push({'article_title': page.title.replace(/\s/g,'_'),
+                                 'article_id'   : page.pageid,
+                                 'rev_id'       : page.lastrevid,
+                                 'ns'           : page.ns
+                                });
+        }
+        //if not has continue || limit reached, call the real callback (aka evaluate articles)
+        if (!cont_str || results_so_far.length >= limit) {
+            get_cm_callback(null, results_so_far);
+        } else {
+            get_category_members(cat_name, limit, get_cm_callback, cont_str, results_so_far);
+        }
+    };
+    do_query(url, cat_results_callback);
+}
+
+function get_cm_factory(name, limit) {
+    return (function(queue_callback, retry) {
+                get_category_members(name, limit, queue_callback);
+            });
+}
+
+function get_cat_factory(name, limit, recursive, subcats, articles) {
+    return (function(queue_callback, retry) {
+            get_category(name, limit, recursive, queue_callback, subcats, articles);
+        });
+}
+
+function get_category(name, limit, recursive, get_cat_done_cb, subcats, articles) {
+    limit = limit || ALL_CATS;
+    recursive = recursive || false;
+    
+    var subcats = subcats || {};
+    var articles = articles || {};
+    var done = false;
+    function get_cat_callback(err, cat_mems) {
+        console.log('called get_cat_callback');
+        if(err) {
+            get_cat_done_cb(err, null);
+        }
+        var new_subcats = [];
+        for (var i=0; i<cat_mems.length; ++i) {
+            var mem = cat_mems[i];
+            if (mem.ns == 14) {
+                if (!(mem.article_id in subcats)) {
+                    new_subcats.push(mem);
+                    subcats[mem.article_id] = mem;
+                }
+            } else {
+                if (!(mem.article_id in articles)) {
+                    articles[mem.article_id] = mem;
+                }
+            }
+        }
+        var article_count = keys(articles).length;
+        if(done) {
+            // do nothing
+            return;
+        } else if( article_count >= limit || 
+                    (new_subcats.length == 0 && catq.pending.length == 0)) {
+            done = true;
+            catq.stop();
+            var art_list = [];
+            for ( id in articles ) {
+                art_list.push(articles[id]);
+            }
+            get_cat_done_cb(null, art_list.slice(0, limit));
+        } else if( recursive ) {
+            var new_lim = limit - article_count;
+            for (var i=0; i<new_subcats.length; ++i) {
+                var mem = new_subcats[i];
+                catq.enqueue(get_cat_factory(new_subcats[i].article_title, new_lim, true, subcats, articles),
+                             get_cat_callback);
+            }
+        }
+    }
+    console.log('get cat mems on '+name);
+    catq.enqueue(get_cm_factory(name, limit),
+                 get_cat_callback);
+}
+
+
+function evaluate_category(name, limit) {
     // create/open file
     // retrieve article list, paging through if necessary
     console.log('getting up to '+limit+' articles for '+name);
     var failures = [];
-    function get_article_names(cat_name, limit, get_names_callback, continue_str, results_so_far) {
-        var url = 'http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=' 
-                   + encodeURIComponent(cat_name) 
-                   + '&prop=info&gcmlimit=' 
-                   + encodeURIComponent(limit) + '&format=json';
-        if(continue_str) {
-            url += '&gcmcontinue='+continue_str;
-        }
-        
-        results_so_far = results_so_far || [];
-                   
-        function cat_results_callback(err, data) {
-            console.log('finished a category query');
-        
-            var pages, cont_str;
-            try {
-                cont_str = data['query-continue'].categorymembers.gcmcontinue;
-            } catch (e) {
-                cont_str = null;
-            }
-            // get page infos from data
-            try {
-                pages = data.query.pages;
-            } catch (e) {
-                pages = {};
-                console.log('Error finding pages in query results.');
-            }
 
-            console.log(keys(pages).length + ' total pages got.');
-            var n0_count = 0;
-            for(var key in pages){
-                var page = pages[key];
-                if(page.ns === 0) {
-                    results_so_far.push({'article_title': page.title.replace(/\s/g,'_'),
-                                        'article_id'   : page.pageid,
-                                        'rev_id'       : page.lastrevid
-                                        });
-                } else {
-                    n0_count += 1;
-                }
-            }
-            console.log('Skipped '+n0_count+' non-zero namespaced articles');
-            
-            //if not has continue || limit reached, call the real callback (aka evaluate articles)
-            if (!cont_str || results_so_far.length >= limit) {
-                get_names_callback(null, results_so_far);
-            } else {
-                get_article_names(cat_name, limit, get_names_callback, cont_str, results_so_far);
-            }
-        };
-        do_query(url, cat_results_callback);
-    }
-    
     function evaluate_articles_wrapper(err, infos) {
         Step(function evaluate_articles(/*err, infos*/) {
             if (err) {
@@ -1032,7 +1106,7 @@ function get_category(name, limit) {
                 output_csv(filename, successful_evs);
         });
     }
-    get_article_names(name, limit, evaluate_articles_wrapper);
+    get_category(name, limit, true, evaluate_articles_wrapper);
 }
 
 function print_page_stats(err, ev) {
