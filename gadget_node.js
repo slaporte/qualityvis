@@ -37,6 +37,10 @@ var $ = jq_lib.create(dummy_window);
 var extend = $.extend;
 var Step = require('./step.js');
 
+// logging setup
+//var logger = require('nlogger').logger('qv');
+var logger = console;
+
 // these can be overridden at the command line. node gadget_node.js --help for
 // more information
 var DEFAULT_ARTICLE_COUNT = 5;
@@ -49,6 +53,13 @@ var CAT_CONCURRENCY       = 2;
 var OUTPUT_HTML           = false;
 
 var ALL_CATS = Infinity;
+
+// Namespace ID constants
+var ARTICLE_NS  = 0;
+var TALK_NS     = 1;
+var CATEGORY_NS = 14;
+var PORTAL_NS   = 100;
+
 
 function keys(obj) {
     var ret = [];
@@ -64,7 +75,7 @@ function values(obj) {
     var ret = [];
     for(var k in obj) {
         if (obj.hasOwnProperty(k)) {
-            ret.push(ret[k]);
+            ret.push(obj[k]);
         }
     }
     return ret;
@@ -72,36 +83,42 @@ function values(obj) {
 
 // TODO: register/save function?
 // TODO: (possibly related to ^) record/replay
-var queue = function queue(workers, description) {
+var queue = function queue(workers, description, autostart) {
     var self = {};
     queue_desc = description || 'Anonymous queue';
     
     self.desc          = queue_desc;
-    self.is_processing    = false;
+    self.is_processing = (typeof start === 'undefined') ? true : autostart;
+    self.is_closed     = false;
     self.pending       = [];
     self.cur_executing = 0;
     self.max_executing = workers;
     
-    self.enqueue = function(func, callback) {
-        self.pending.push({'func':func, 'callback':callback});
-        self.start();
+    self.enqueue = function enqueue(func, callback) {
+        if(!self.is_closed) {
+            self.pending.push({'func':func, 'callback':callback});
+            if(self.is_processing) {
+                process();
+            }
+        }
     };
-    self.stop = function() {
+    self.stop = function stop() {
         self.is_processing = false;
     };
-    self.start = function() {
+    self.close = function close() {
+        self.is_closed = true;
+    };
+    self.start = function start() {
         self.is_processing = true;
         process();
+    };
+    self.get_unfinished_count = function get_unfinished_count() {
+        return self.pending.length + self.cur_executing;
     };
     
     var get_retry = function get_retry(task) {
         return function task_retry() {
             var item_name = task.func.desc || 'unknown queued function';
-            //console.log(queue_desc + ': Retrying a task, '+self.cur_executing+' tasks still in flight. '+ self.pending.length + ' waiting.');
-            //console.log(queue_desc + ': retrying '+ item_name);
-            //if (task.func.attempts) {
-            //    console.log('   - ('+task.func.attempts+' attempts)');
-            //}
             self.cur_executing -= 1;
             self.enqueue(task.func, task.callback);
         };
@@ -109,7 +126,7 @@ var queue = function queue(workers, description) {
     var get_callback = function get_callback(task) {
         return function task_callback() {
             if (self.desc == 'JSDOM queue') {
-                console.log(self.desc + ': Finished a task, '+self.cur_executing+' tasks still in flight. '+ self.pending.length + ' waiting.');
+                logger.info(self.desc + ': Finished a task, '+self.cur_executing+' tasks still in flight. '+ self.pending.length + ' waiting.');
             }
             self.cur_executing -= 1;
             process();
@@ -117,26 +134,23 @@ var queue = function queue(workers, description) {
         };
     };
     var process = function process() {
-        if (self.cur_executing >= self.max_executing) {
+        var do_nothing = ( (self.cur_executing >= self.max_executing) // full
+                         || (self.pending.length <= 0)                // no tasks
+                         || (!self.is_processing));                   // stopped/not started
+        if (do_nothing) {
             return;
         }
-        if (self.pending.length > 0) {
-            var n = self.pending.pop();
-            
-            var callback = get_callback(n);
-            var retry = get_retry(n);
-            
-            self.cur_executing += 1;
-            try {
-                n.func(callback, retry);
-            } catch (exc){
-                console.log(queue_desc + ': Major failure :/ ' + n.desc);
-                callback(exc, null);
-            }
-        } else {
-            if (self.cur_executing === 0) {
-                self.stop();
-            }
+        var n = self.pending.pop();
+        
+        var callback = get_callback(n);
+        var retry = get_retry(n);
+        
+        self.cur_executing += 1;
+        try {
+            n.func(callback, retry);
+        } catch (exc){
+            logger.info(queue_desc + ': Major failure :/ ' + n.desc);
+            callback(exc, null);
         }
     };
     return self;
@@ -174,11 +188,11 @@ var get_window = function get_window(title) {
     var ret = avail_windows.pop();
     window_gets++;
     if (!ret) {
-        console.log('oh man. '+title+' is in trubbz.');
-        console.log(keys(eval_registry));
+        logger.info('oh man. '+title+' is in trubbz.');
+        logger.info(keys(eval_registry));
     } else {
         if (window_gets % 10 == 0) {
-            console.log(keys(eval_registry));
+            logger.info(keys(eval_registry));
         }
         eval_registry[title] = ret;
     }
@@ -189,12 +203,14 @@ var release_window = function release_window(window, title) {
     if (window) {
         avail_windows.push(window);
     } else {
-        console.log(title+" ain't got nothin we need.");
+        logger.info(title+" ain't got nothin we need.");
     }
     delete eval_registry[title];
     
     return;
 };
+
+
 
 if(testing === true) {
     //var article_title = 'Charizard';
@@ -202,6 +218,7 @@ if(testing === true) {
     cli.parse({
         article_count:      ['n', 'Number of articles to fetch', 'number', DEFAULT_ARTICLE_COUNT]
         ,category_name:     ['c', 'Category of articles to fetch', 'string', DEFAULT_CATEGORY]
+        ,recursive:         ['r', 'Also evaluate subcategories recursively']
         ,evaluator_workers: ['E', 'Number of evaluators to process simultaneously', 'number', EV_CONCURRENCY]
         ,query_workers:     ['Q', 'Number of web queries to fetch simultaneously', 'number', QUERY_CONCURRENCY]
         ,global_timeout:    ['T', 'Amount of time to wait for web queries (in milliseconds)', 'number', GLOBAL_TIMEOUT]
@@ -214,8 +231,15 @@ if(testing === true) {
         QUERY_CONCURRENCY = options.query_workers;
         GLOBAL_TIMEOUT    = options.global_timeout;
         
+        var recurse = options.recursive || false;
+        
+        var json_output = get_json_output();
+        function evaluator_on_complete(err, evaluator) {
+            json_output(null, evaluator);
+        }
+        
         init_windows(EV_CONCURRENCY * 2, function() { //TODO: (sorta-hack) maybe stop creating extra DOM windows?
-            evaluate_category(options.category_name, options.article_count);
+            evaluate_category(options.category_name, options.article_count, recurse, evaluator_on_complete);
         });
     });
 } else {
@@ -309,15 +333,15 @@ function do_query(url, complete_callback, kwargs) {
             successful_queries++;
             if (successful_queries % 20 === 0) {
                 var util = require('util');
-                console.log(successful_queries + ' successful queries.');
-                console.log('Memory stats:');
-                console.log(util.inspect(process.memoryUsage()));
+                logger.info(successful_queries + ' successful queries.');
+                logger.info('Memory stats:');
+                logger.info(util.inspect(process.memoryUsage()));
             }
             complete_callback(null, data);
         },
         error: function(jqXHR, textStatus, errorThrown) {
             failed_queries++;
-            console.log(failed_queries + ' failed queries: ' + url);
+            logger.info(failed_queries + ' failed queries: ' + url);
             complete_callback(errorThrown, null);
         },
         complete: function(jqXHR, textStatus) {
@@ -377,7 +401,7 @@ var input = function input(desc, fetch_or_data, process) {
         var fetch_callback = function fetch_callback(err, data) {
             self.fetch_data = data; //may or may not be large
             if (err || !data) {
-                //console.log('failed fetch on: '+desc+' '+err);
+                //logger.info('failed fetch on: '+desc+' '+err);
                 self.results = null;
                 err = err || 'Unknown error';
                 self.error = 'Fetch failed on'+self.desc+': '+err;
@@ -391,7 +415,7 @@ var input = function input(desc, fetch_or_data, process) {
                 } catch (proc_err) {
                     self.results = null;
                     self.error = 'Processing failed on '+self.desc+': '+proc_err;
-                    //console.log(self.error);
+                    //logger.info(self.error);
                 }
             }
             if (self.results) {
@@ -481,7 +505,7 @@ var make_evaluator = function(dom, rewards, callback, mq) {
         
     }, function calculate_results(err, completed_inputs) {
         if (err) {
-            console.log('One or more inputs failed: ' + err);
+            logger.info('One or more inputs failed: ' + err);
             throw err;
         }
         
@@ -939,10 +963,8 @@ function get_category_members(cat_name, limit, get_cm_callback, continue_str, re
     }
     
     results_so_far = results_so_far || [];
-    console.log(cat_name);
+    logger.info(cat_name);
     function cat_results_callback(err, data) {
-        console.log('finished a category query');
-    
         var pages, cont_str;
         try {
             cont_str = data['query-continue'].categorymembers.gcmcontinue;
@@ -954,10 +976,10 @@ function get_category_members(cat_name, limit, get_cm_callback, continue_str, re
             pages = data.query.pages;
         } catch (e) {
             pages = {};
-            console.log('Error finding pages in query results.');
+            logger.info('Error finding pages in query results.');
         }
 
-        console.log(keys(pages).length + ' total pages got.');
+        logger.info(keys(pages).length + ' total pages got.');
         
         for(var key in pages){
             var page = pages[key];
@@ -995,70 +1017,54 @@ function get_category(name, limit, recursive, get_cat_done_cb, subcats, articles
     
     var subcats = subcats || {};
     var articles = articles || {};
-    var done = false;
-    function get_cat_callback(err, cat_mems) {
-        console.log('called get_cat_callback');
-        if(err) {
-            get_cat_done_cb(err, null);
-        }
-        var new_subcats = [];
-        for (var i=0; i<cat_mems.length; ++i) {
-            var mem = cat_mems[i];
-            if (mem.ns == 14) {
-                if (!(mem.article_id in subcats)) {
-                    new_subcats.push(mem);
-                    subcats[mem.article_id] = mem;
+    function cat_callback_wrapper(real_cat_cb, subcats, articles) {
+        return (function get_cat_callback(err, cat_mems) {
+            if(err) {
+                real_cat_cb(err, null);
+            }
+            for (var i=0; i<cat_mems.length; ++i) {
+                var mem = cat_mems[i];
+                if (mem.ns == CATEGORY_NS) {
+                    if (!(mem.article_id in subcats)) {
+                        subcats[mem.article_id] = mem;
+                        if (recursive) {
+                            catq.enqueue(get_cm_factory(mem.article_title, limit),
+                                         cat_callback_wrapper(real_cat_cb, subcats, articles));
+                        }
+                    }
+                } else if (mem.ns == ARTICLE_NS){
+                    if (!(mem.article_id in articles)) {
+                        articles[mem.article_id] = mem;
+                    }
                 }
-            } else {
-                if (!(mem.article_id in articles)) {
-                    articles[mem.article_id] = mem;
-                }
             }
-        }
-        var article_count = keys(articles).length;
-        if(done) {
-            // do nothing
-            return;
-        } else if( article_count >= limit || 
-                    (new_subcats.length == 0 && catq.pending.length == 0)) {
-            done = true;
-            catq.stop();
-            var art_list = [];
-            for ( id in articles ) {
-                art_list.push(articles[id]);
+            var article_count = keys(articles).length;
+            var is_complete = article_count >= limit || catq.get_unfinished_count() <= 0;
+            if( is_complete && !catq.is_closed ) {
+                catq.stop();
+                catq.close();
+                real_cat_cb(null, values(articles).slice(0, limit));
             }
-            get_cat_done_cb(null, art_list.slice(0, limit));
-        } else if( recursive ) {
-            var new_lim = limit - article_count;
-            for (var i=0; i<new_subcats.length; ++i) {
-                var mem = new_subcats[i];
-                catq.enqueue(get_cat_factory(new_subcats[i].article_title, new_lim, true, subcats, articles),
-                             get_cat_callback);
-            }
-        }
+        });
     }
-    console.log('get cat mems on '+name);
     catq.enqueue(get_cm_factory(name, limit),
-                 get_cat_callback);
+                 cat_callback_wrapper(get_cat_done_cb, subcats, articles));
 }
 
-
-function evaluate_category(name, limit) {
+function evaluate_category(name, limit, recursive, per_ev_cb, overall_cb) {
     // create/open file
     // retrieve article list, paging through if necessary
-    console.log('getting up to '+limit+' articles for '+name);
+    logger.info('getting up to '+limit+' articles for '+name);
     var failures = [];
 
     function evaluate_articles_wrapper(err, infos) {
         Step(function evaluate_articles(/*err, infos*/) {
             if (err) {
-                console.log('Could not retrieve category list.');
+                logger.info('Could not retrieve category list.');
                 throw err;
             }
 
-            console.log(infos.length + ' processable infos got.');
-            
-            var json_output = get_json_output();
+            logger.info(infos.length + ' processable infos got.');
             
             var articles_group = this.group();
             for (var i=0; i < infos.length; ++i) {
@@ -1074,13 +1080,13 @@ function evaluate_category(name, limit) {
                 var get_group_wrapper = function(article_title, group_callback) {
                     return function article_group_wrapper(err, evaluator) {
                         if (err) {
-                            console.log('Failed to process article: '+article_title+'. Dropping evaluator.');
+                            logger.info('Failed to process article: '+article_title+'. Dropping evaluator.');
                             failures.push(article_title);
                             release_window(err.dom, article_title);
                             group_callback(null, null);
                         } else {
                             release_window(evaluator.dom, article_title);
-                            json_output(null, evaluator);
+                            per_ev_cb(null, evaluator);
                             group_callback(null, evaluator);
                         }
                     }
@@ -1101,30 +1107,30 @@ function evaluate_category(name, limit) {
                     }
                 }
                 var total_evals = successful_evs.length + failures.length;
-                console.log(failures.length+'/'+total_evals+' evaluations failed:');
-                console.log(failures);
+                logger.info(failures.length+'/'+total_evals+' evaluations failed:');
+                logger.info(failures);
                 output_csv(filename, successful_evs);
         });
     }
-    get_category(name, limit, true, evaluate_articles_wrapper);
+    get_category(name, limit, recursive, evaluate_articles_wrapper);
 }
 
 function print_page_stats(err, ev) {
-    console.log("\nPage stats for " + ev.article_title + "\n");
+    logger.info("\nPage stats for " + ev.article_title + "\n");
     for(var stat in ev.data) {
-        console.log('  - '+stat + ': ' + ev.data[stat]);
+        logger.info('  - '+stat + ': ' + ev.data[stat]);
     }
 
 
-    console.log("\nResults for " + ev.article_title + "\n");
+    logger.info("\nResults for " + ev.article_title + "\n");
     for(var area in ev.results) {
-        console.log('  - '+area + ': ' + ev.results[area].score + '/' + ev.results[area].max);
+        logger.info('  - '+area + ': ' + ev.results[area].score + '/' + ev.results[area].max);
     }
 
-    console.log("\nRecommendations for " + ev.article_title + "\n");
+    logger.info("\nRecommendations for " + ev.article_title + "\n");
     var recos = ev.results.recos;
     for(var attr in recos) {
-        console.log('  - '+attr + ': ' + recos[attr].cur_stat + ';' + recos[attr].points);
+        logger.info('  - '+attr + ': ' + recos[attr].cur_stat + ';' + recos[attr].points);
     }
 }
 
@@ -1203,7 +1209,7 @@ function output_csv(path, evs/*, callback*/) {
     }
     out_file.destroySoon();
     
-    console.log('Wrote results to '+path);
+    logger.info('Wrote results to '+path);
     //callback();
 }
 
@@ -1235,14 +1241,14 @@ function get_info_callback(real_callback) {
     return function(err, data) {
         var get_info_failed = (err || !(data && data.query));
         if (get_info_failed) {
-            console.log('error getting article info. maybe timed out?');
+            logger.info('error getting article info. maybe timed out?');
             return;
         } 
         var page_ids = keys(data.query.pages),
             pages    = data.query.pages;
         
         if (page_ids.length == 0) {
-            console.log('No article with title '+ article_title + ' found.');
+            logger.info('No article with title '+ article_title + ' found.');
             return;
         }
         var article_id    = page_ids[0],
@@ -1259,7 +1265,7 @@ function get_info_callback(real_callback) {
 function evaluate_article_node(article_title, article_id, rev_id, eval_callback) {
     Step(
         function start() {
-            console.log("Start QV on "+article_title);
+            logger.info("Start QV on "+article_title);
             
             var info_callback = this.parallel();
             var content_callback = this.parallel();
@@ -1286,7 +1292,7 @@ function evaluate_article_node(article_title, article_id, rev_id, eval_callback)
         },
         function prepare_window(err, info_input, content_input) {
             if (err) {
-                console.log('Error retrieving info for article "'+article_title+'"');
+                logger.info('Error retrieving info for article "'+article_title+'"');
                 throw err;
             }
             prepare_window_node(err, {'article_info': info_input.results,
@@ -1295,21 +1301,21 @@ function evaluate_article_node(article_title, article_id, rev_id, eval_callback)
         },
         function make_evaluator_wrapper(err, window) {
             if (err) {
-                console.log('Could not construct window: '+err);
+                logger.info('Could not construct window: '+err);
                 throw err;
             }
             var ev = make_evaluator(window, rewards, this, mq);
         },
         function all_done(err, evaluator) {
             if (err) {
-                console.log('Could not evaluate article: '+err);
+                logger.info('Could not evaluate article: '+err);
                 if(eval_callback) {
                     eval_callback(err, null);
                 } else {
                     throw err;
                 }
             } else {
-                console.log('Successfully finished '+evaluator.article_title);
+                logger.info('Successfully finished '+evaluator.article_title);
                 if (eval_callback) {
                     eval_callback(null, evaluator);
                 }
