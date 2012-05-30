@@ -38,18 +38,27 @@ var extend = $.extend;
 var Step = require('./step.js');
 
 // logging setup
-//var logger = require('nlogger').logger('qv');
-var logger = console;
+var logger;
+try {
+    var Logger = require('devnull');
+    logger = new Logger({namespacing: 0,
+                         timestamp: false,});
+} catch (e) {
+    console.warn('devnull logger not found, using console for logging.');
+    logger = console;
+}
+logger.info('Started run at '+Date());
 
 // these can be overridden at the command line. node gadget_node.js --help for
 // more information
 var DEFAULT_ARTICLE_COUNT = 5;
 var DEFAULT_CATEGORY      = 'Category:Featured_articles';
+var DEFAULT_LOG_FILE      = 'fetch.log';
 var GLOBAL_TIMEOUT        = 6000; // milliseconds
 var GLOBAL_RETRY_COUNT    = 3;
 var EV_CONCURRENCY        = 10;
 var QUERY_CONCURRENCY     = 8;
-var CAT_CONCURRENCY       = 2;
+var CAT_CONCURRENCY       = 4;
 var OUTPUT_HTML           = false;
 
 var ALL_CATS = Infinity;
@@ -156,16 +165,40 @@ var queue = function queue(workers, description, autostart) {
     return self;
 };
 
-var mq = queue(QUERY_CONCURRENCY, 'Query queue');
-var jsdomq = queue(EV_CONCURRENCY, 'Evaluator queue');
-var catq = queue(CAT_CONCURRENCY, 'Category queue');
-
-var all_windows = [];
-var avail_windows = [];
-
-var init_windows = function(count, init_callback) {
+var WindowManager = function WindowManager(count, progress, init_callback) {
     var jsdom = require('jsdom');
+    var self = {};
     
+    self.all_windows = all_windows =  [];
+    self.avail_windows = avail_windows = [];
+    self.eval_registry = eval_registry = {};
+    
+    self.window_gets = 0;
+  
+    self.get_window = function get_window(title) {
+        var ret = avail_windows.pop();
+        self.window_gets++;
+        if (!ret) {
+            logger.error('No available windows for "'+title+'"');
+            logger.info('Current window holders are: ');
+            logger.info(keys(eval_registry));
+        } else {
+            eval_registry[title] = ret;
+        }
+        return ret;
+    };
+
+    self.release_window = function release_window(window, title) {
+        if (window) {
+            avail_windows.push(window);
+        } else {
+            logger.warn(title+" did not return a window.");
+        }
+        delete eval_registry[title];
+        
+        return;
+    };
+  
     for (var i=0; i < count; ++i) {
         jsdom.env({
             html: "<html><body></body></html>",
@@ -179,74 +212,24 @@ var init_windows = function(count, init_callback) {
             }
         });
     }
-    return;
-};
-
-var window_gets = 0;
-var eval_registry = {};
-var get_window = function get_window(title) {
-    var ret = avail_windows.pop();
-    window_gets++;
-    if (!ret) {
-        logger.info('oh man. '+title+' is in trubbz.');
-        logger.info(keys(eval_registry));
-    } else {
-        if (window_gets % 10 == 0) {
-            logger.info(keys(eval_registry));
-        }
-        eval_registry[title] = ret;
-    }
-    return ret;
-};
-
-var release_window = function release_window(window, title) {
-    if (window) {
-        avail_windows.push(window);
-    } else {
-        logger.info(title+" ain't got nothin we need.");
-    }
-    delete eval_registry[title];
-    
-    return;
+    return self;
 };
 
 
 
-if(testing === true) {
-    //var article_title = 'Charizard';
-    var cli = require('cli');
-    cli.parse({
-        article_count:      ['n', 'Number of articles to fetch', 'number', DEFAULT_ARTICLE_COUNT]
-        ,category_name:     ['c', 'Category of articles to fetch', 'string', DEFAULT_CATEGORY]
-        ,recursive:         ['r', 'Also evaluate subcategories recursively']
-        ,evaluator_workers: ['E', 'Number of evaluators to process simultaneously', 'number', EV_CONCURRENCY]
-        ,query_workers:     ['Q', 'Number of web queries to fetch simultaneously', 'number', QUERY_CONCURRENCY]
-        ,global_timeout:    ['T', 'Amount of time to wait for web queries (in milliseconds)', 'number', GLOBAL_TIMEOUT]
-        
-    });
-    
-    cli.main(function(args, options) {
-        // update global constants
-        EV_CONCURRENCY    = options.evaluator_workers;
-        QUERY_CONCURRENCY = options.query_workers;
-        GLOBAL_TIMEOUT    = options.global_timeout;
-        
-        var recurse = options.recursive || false;
-        
-        var json_output = get_json_output();
-        function evaluator_on_complete(err, evaluator) {
-            json_output(null, evaluator);
-        }
-        
-        init_windows(EV_CONCURRENCY * 2, function() { //TODO: (sorta-hack) maybe stop creating extra DOM windows?
-            evaluate_category(options.category_name, options.article_count, recurse, evaluator_on_complete);
-        });
-    });
-} else {
-    var article_title = mw.config.get('wgTitle');
-    var revid = mw.config.get('wgCurRevisionId');
-    var articleId = mw.config.get('wgArticleId');
-}
+var cli = require('cli');
+cli.parse({
+    article_count:      ['n', 'Number of articles to fetch', 'number', DEFAULT_ARTICLE_COUNT]
+    ,category_name:     ['c', 'Category of articles to fetch', 'string', DEFAULT_CATEGORY]
+    ,recursive:         ['r', 'Also evaluate subcategories recursively']
+    ,evaluator_workers: ['E', 'Number of evaluators to process simultaneously', 'number', EV_CONCURRENCY]
+    ,query_workers:     ['Q', 'Number of web queries to fetch simultaneously', 'number', QUERY_CONCURRENCY]
+    ,cat_workers:       ['C', 'Number of category member lists to fetch simultaneously', 'number', CAT_CONCURRENCY]
+    ,global_timeout:    ['T', 'Amount of time to wait for web queries (in milliseconds)', 'number', GLOBAL_TIMEOUT]
+});
+
+var mq, jsdomq, catq, wm;
+
 
 // Convenience functions for reward formulae
 function overStat(threshold, great, reward) {
@@ -333,9 +316,8 @@ function do_query(url, complete_callback, kwargs) {
             successful_queries++;
             if (successful_queries % 20 === 0) {
                 var util = require('util');
-                logger.info(successful_queries + ' successful queries.');
-                logger.info('Memory stats:');
-                logger.info(util.inspect(process.memoryUsage()));
+                logger.info(successful_queries + ' successful queries.'+
+                    '(Memory usage: '+process.memoryUsage()['rss']/(1024*1024) + ' MB)');
             }
             complete_callback(null, data);
         },
@@ -933,7 +915,7 @@ function prepare_window_node(err, kwargs, callback) {
         out_file.destroySoon();
     }
 
-    var window = get_window(article_title);
+    var window = wm.get_window(article_title);
     window.document.innerHTML = '<html><body>'+text+'</body></html>';
     
     var real_values = {
@@ -963,7 +945,6 @@ function get_category_members(cat_name, limit, get_cm_callback, continue_str, re
     }
     
     results_so_far = results_so_far || [];
-    logger.info(cat_name);
     function cat_results_callback(err, data) {
         var pages, cont_str;
         try {
@@ -1051,19 +1032,9 @@ function get_category(name, limit, recursive, get_cat_done_cb, subcats, articles
                  cat_callback_wrapper(get_cat_done_cb, subcats, articles));
 }
 
-function evaluate_category(name, limit, recursive, per_ev_cb, overall_cb) {
-    // create/open file
-    // retrieve article list, paging through if necessary
-    logger.info('getting up to '+limit+' articles for '+name);
+function evaluate_articles(infos, per_ev_cb, overall_cb) {
     var failures = [];
-
-    function evaluate_articles_wrapper(err, infos) {
-        Step(function evaluate_articles(/*err, infos*/) {
-            if (err) {
-                logger.info('Could not retrieve category list.');
-                throw err;
-            }
-
+    Step(function evaluate_articles_start() {
             logger.info(infos.length + ' processable infos got.');
             
             var articles_group = this.group();
@@ -1082,10 +1053,10 @@ function evaluate_category(name, limit, recursive, per_ev_cb, overall_cb) {
                         if (err) {
                             logger.info('Failed to process article: '+article_title+'. Dropping evaluator.');
                             failures.push(article_title);
-                            release_window(err.dom, article_title);
+                            wm.release_window(err.dom, article_title);
                             group_callback(null, null);
                         } else {
-                            release_window(evaluator.dom, article_title);
+                            wm.release_window(evaluator.dom, article_title);
                             per_ev_cb(null, evaluator);
                             group_callback(null, evaluator);
                         }
@@ -1094,26 +1065,61 @@ function evaluate_category(name, limit, recursive, per_ev_cb, overall_cb) {
                 jsdomq.enqueue(get_eval_wrapper(article_title, article_id, rev_id), 
                                get_group_wrapper(article_title, articles_group()));
             }
-            }, function output_evaluations(err, evs) {
-                if (err) {
-                    throw err;
+        }, function output_evaluations(err, evs) {
+            if (err) {
+                throw err;
+            }
+            var successful_evs = [];
+            for (var i=0; i<evs.length; i++) {
+                // dropping failed evaluators
+                if (evs[i]) {
+                    successful_evs.push(evs[i]);
                 }
-                var filename = 'output_'+(new Date()).valueOf()+'.csv';
-                var successful_evs = [];
-                for (var i=0; i<evs.length; i++) {
-                    // dropping failed evaluators
-                    if (evs[i]) {
-                        successful_evs.push(evs[i]);
-                    }
-                }
-                var total_evals = successful_evs.length + failures.length;
-                logger.info(failures.length+'/'+total_evals+' evaluations failed:');
-                logger.info(failures);
-                output_csv(filename, successful_evs);
-        });
-    }
-    get_category(name, limit, recursive, evaluate_articles_wrapper);
+            }
+            overall_cb(null, successful_evs, failures);
+        }
+    );
 }
+
+cli.main(function(args, options) {
+    // update global constants
+    EV_CONCURRENCY    = options.evaluator_workers;
+    QUERY_CONCURRENCY = options.query_workers;
+    CAT_CONCURRENCY   = options.cat_workers;
+    GLOBAL_TIMEOUT    = options.global_timeout;
+    
+    mq     = queue(QUERY_CONCURRENCY, 'Query queue');
+    jsdomq = queue(EV_CONCURRENCY, 'Evaluator queue');
+    catq   = queue(CAT_CONCURRENCY, 'Category queue');
+
+    var recursive     = options.recursive || false;
+    var article_count = options.article_count;
+    var category_name = options.category_name;
+    
+    logger.info('Getting up to '+article_count+' articles from '+category_name+'.');
+    
+    var json_output = get_json_output();
+    function single_on_complete(err, evaluator) {
+        json_output(null, evaluator);
+    }
+    function overall_on_complete(err, successful_evs, failed_titles) { // TODO args for successes/failures
+        var filename = 'output_'+(new Date()).valueOf()+'.csv';
+        var total_evals = successful_evs.length + failed_titles.length;
+        logger.info(failed_titles.length+'/'+total_evals+' evaluations failed:');
+        logger.info(failed_titles);
+        output_csv(filename, successful_evs);
+    }
+    
+    wm = WindowManager(EV_CONCURRENCY + 2, null, function() {
+        get_category(category_name, article_count, recursive, function(err, infos) {
+            if(err) {
+                console.error('Error retrieving entries for '+category_name);
+            } else {
+                evaluate_articles(infos, single_on_complete, overall_on_complete);
+            }
+        });
+    });
+});
 
 function print_page_stats(err, ev) {
     logger.info("\nPage stats for " + ev.article_title + "\n");
