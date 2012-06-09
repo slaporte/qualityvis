@@ -22,11 +22,9 @@
  */
  
  // TODO: save/replay queue?
- // TODO: free memory (start by deleting dom from evaluator)
- // TODO: stream process the evaluators in get_category
+ // TODO: report failed inputs on evaluators
  
 var testing = !(this.mw);
-
 
 var jsdom = require('jsdom');
 var dummy_window = jsdom.jsdom().createWindow();
@@ -38,16 +36,20 @@ var extend = $.extend;
 var Step = require('./step.js');
 
 // logging setup
-var logger;
+var logger, use_devnull;
 try {
     var Logger = require('devnull');
+    var stream_transport = require('devnull/transports/stream');
     logger = new Logger({namespacing: 0,
                          timestamp: false,});
+    logger.warn = logger.warning; //mock console's interface
+    use_devnull = true;
 } catch (e) {
     console.warn('devnull logger not found, using console for logging.');
     logger = console;
+    logger.warning = logger.warn; // mock devnull's interface
+    use_devnull = false;
 }
-logger.info('Started run at '+Date());
 
 // these can be overridden at the command line. node gadget_node.js --help for
 // more information
@@ -134,12 +136,15 @@ var queue = function queue(workers, description, autostart) {
     };
     var get_callback = function get_callback(task) {
         return function task_callback() {
-            if (self.desc == 'JSDOM queue') {
-                logger.info(self.desc + ': Finished a task, '+self.cur_executing+' tasks still in flight. '+ self.pending.length + ' waiting.');
-            }
             self.cur_executing -= 1;
             process();
-            task.callback.apply(this, arguments);
+	    try {
+		task.callback.apply(this, arguments);
+	    } catch (exc) {
+		var item_name = task.func.desc || 'unknown queued function';
+		var callback_name = task.callback.title;
+		logger.error(queue_desc + ': Major error when calling queue task '+item_name+"'s callback '"+callback_name+"'.");
+	    }
         };
     };
     var process = function process() {
@@ -158,7 +163,7 @@ var queue = function queue(workers, description, autostart) {
         try {
             n.func(callback, retry);
         } catch (exc){
-            logger.info(queue_desc + ': Major failure :/ ' + n.desc);
+            logger.error(queue_desc + ': Major failure :/ ' + n.desc);
             callback(exc, null);
         }
     };
@@ -192,7 +197,7 @@ var WindowManager = function WindowManager(count, progress, init_callback) {
         if (window) {
             avail_windows.push(window);
         } else {
-            logger.warn(title+" did not return a window.");
+            logger.warning(title+" did not return a window.");
         }
         delete eval_registry[title];
         
@@ -216,7 +221,6 @@ var WindowManager = function WindowManager(count, progress, init_callback) {
 };
 
 
-
 var cli = require('cli');
 cli.parse({
     article_count:      ['n', 'Number of articles to fetch', 'number', DEFAULT_ARTICLE_COUNT]
@@ -226,9 +230,11 @@ cli.parse({
     ,query_workers:     ['Q', 'Number of web queries to fetch simultaneously', 'number', QUERY_CONCURRENCY]
     ,cat_workers:       ['C', 'Number of category member lists to fetch simultaneously', 'number', CAT_CONCURRENCY]
     ,global_timeout:    ['T', 'Amount of time to wait for web queries (in milliseconds)', 'number', GLOBAL_TIMEOUT]
+    ,log_file:          ['L', 'Path of file to log to (tail it for old-style output)', 'string', DEFAULT_LOG_FILE]
+    ,debug:             ['D', 'TBI: disable progress meters, log to stdout at debug loglevel']
 });
 
-var mq, jsdomq, catq, wm;
+var mq, jsdomq, catq, wm, pm;
 
 
 // Convenience functions for reward formulae
@@ -317,13 +323,13 @@ function do_query(url, complete_callback, kwargs) {
             if (successful_queries % 20 === 0) {
                 var util = require('util');
                 logger.info(successful_queries + ' successful queries.'+
-                    '(Memory usage: '+process.memoryUsage()['rss']/(1024*1024) + ' MB)');
+                    ' (Memory usage: '+process.memoryUsage()['rss']/(1024*1024) + ' MB)');
             }
             complete_callback(null, data);
         },
         error: function(jqXHR, textStatus, errorThrown) {
             failed_queries++;
-            logger.info(failed_queries + ' failed queries: ' + url);
+            logger.warning(failed_queries + ' failed queries: ' + url);
             complete_callback(errorThrown, null);
         },
         complete: function(jqXHR, textStatus) {
@@ -358,6 +364,7 @@ var yql_source = function(query) {
     };
 };
 
+// WIP
 var grokse_input = function(context) {
     var self;
     
@@ -957,10 +964,10 @@ function get_category_members(cat_name, limit, get_cm_callback, continue_str, re
             pages = data.query.pages;
         } catch (e) {
             pages = {};
-            logger.info('Error finding pages in query results.');
+            logger.error('Error finding pages in query results.');
         }
 
-        logger.info(keys(pages).length + ' total pages got.');
+        logger.info(keys(pages).length + ' pages got.');
         
         for(var key in pages){
             var page = pages[key];
@@ -992,6 +999,7 @@ function get_cat_factory(name, limit, recursive, subcats, articles) {
         });
 }
 
+// TODO: prioritize breadth by enabling priority queue
 function get_category(name, limit, recursive, get_cat_done_cb, subcats, articles) {
     limit = limit || ALL_CATS;
     recursive = recursive || false;
@@ -1003,7 +1011,7 @@ function get_category(name, limit, recursive, get_cat_done_cb, subcats, articles
             if(err) {
                 real_cat_cb(err, null);
             }
-            for (var i=0; i<cat_mems.length; ++i) {
+            for (var i=0; i<cat_mems.length; i += 1) {
                 var mem = cat_mems[i];
                 if (mem.ns == CATEGORY_NS) {
                     if (!(mem.article_id in subcats)) {
@@ -1020,7 +1028,7 @@ function get_category(name, limit, recursive, get_cat_done_cb, subcats, articles
                 }
             }
             var article_count = keys(articles).length;
-            var is_complete = article_count >= limit || catq.get_unfinished_count() <= 0;
+            var is_complete = (article_count >= limit) || catq.get_unfinished_count() <= 0;
             if( is_complete && !catq.is_closed ) {
                 catq.stop();
                 catq.close();
@@ -1032,54 +1040,104 @@ function get_category(name, limit, recursive, get_cat_done_cb, subcats, articles
                  cat_callback_wrapper(get_cat_done_cb, subcats, articles));
 }
 
-function evaluate_articles(infos, per_ev_cb, overall_cb) {
-    var failures = [];
-    Step(function evaluate_articles_start() {
-            logger.info(infos.length + ' processable infos got.');
-            
-            var articles_group = this.group();
-            for (var i=0; i < infos.length; ++i) {
-                var article_title = infos[i].article_title,
-                    article_id    = infos[i].article_id,
-                    rev_id        = infos[i].rev_id;
-                
-                var get_eval_wrapper = function(article_title, article_id, rev_id) {
-                    return function eval_article_wrapper(queue_callback, retry) { //TODO: use this retry?
-                        evaluate_article_node(article_title, article_id, rev_id, queue_callback);
-                    }
-                };
-                var get_group_wrapper = function(article_title, group_callback) {
-                    return function article_group_wrapper(err, evaluator) {
-                        if (err) {
-                            logger.info('Failed to process article: '+article_title+'. Dropping evaluator.');
-                            failures.push(article_title);
-                            wm.release_window(err.dom, article_title);
-                            group_callback(null, null);
-                        } else {
-                            wm.release_window(evaluator.dom, article_title);
-                            per_ev_cb(null, evaluator);
-                            group_callback(null, evaluator);
-                        }
-                    }
-                }
-                jsdomq.enqueue(get_eval_wrapper(article_title, article_id, rev_id), 
-                               get_group_wrapper(article_title, articles_group()));
+function evaluate_articles(infos, per_ev_cb) {    
+    for (var i=0; i < infos.length; ++i) {
+        var article_title = infos[i].article_title,
+        article_id    = infos[i].article_id,
+        rev_id        = infos[i].rev_id;
+        
+        var get_eval_wrapper = function(article_title, article_id, rev_id) {
+            return function eval_article_wrapper(queue_callback, retry) { //TODO: use this retry?
+                evaluate_article_node(article_title, article_id, rev_id, queue_callback);
             }
-        }, function output_evaluations(err, evs) {
-            if (err) {
-                throw err;
-            }
-            var successful_evs = [];
-            for (var i=0; i<evs.length; i++) {
-                // dropping failed evaluators
-                if (evs[i]) {
-                    successful_evs.push(evs[i]);
+        };
+        var get_eval_callback = function(article_title, per_ev_cb) {
+            return function eval_callback(err, evaluator) {
+                if (err) {
+		    err.title = article_title;
+		    per_ev_cb(err, null);
+                } else {
+                    per_ev_cb(null, evaluator);
                 }
             }
-            overall_cb(null, successful_evs, failures);
         }
-    );
+        jsdomq.enqueue(get_eval_wrapper(article_title, article_id, rev_id), 
+                       get_eval_callback(article_title, per_ev_cb));
+    }
 }
+
+var ProgressManager = function ProgressManager(bar_names) {
+    var self = {};
+    var multimeter = require('multimeter');
+    
+    var multi = self.multi = null; //multimeter(process); // TODO: make a working 'multimeter'
+    //multi.charm.on('^C', process.exit);
+    
+    var bars = self.bars = {};
+    
+    var offset = 3;
+    for (var i=0; i<bar_names.length; ++i) {
+        offset = (offset < bar_names[i].length) ? bar_names[i].length : offset;
+    }
+    offset += 2; // room for colon + whitespace
+    
+    var config = {
+        width : 50 - offset,
+        solid : {
+            text : '|',
+            foreground : 'white',
+            background : 'blue'
+        },
+        empty : { text : ' ' },
+    };
+    
+    //multi.write('\nQualityVis progress and metrics:\n\n');
+    for (var i=0; i<bar_names.length; ++i) {
+        var name = bar_names[i];
+        //multi.write(name+': \n');
+        var bar = bars[name] = {};//multi.rel(offset, i, config);
+        bar.last_n = 0;
+        bar.last_d = false;
+    }
+    
+    self.inc = function increment_progress(name) {
+	return;
+        var bar = self.bars[name];
+        if (!bar) {
+            logger.warning('Attempted to update unregistered progress bar: '+name);
+            return;
+        }
+        var n = bar.last_n;
+        var d = bar.last_d;
+        if (d === false) {
+            n = Math.min(n, 100);
+            bar.percent(n);
+        } else {
+            bar.ratio(n, d || n); // if d is zero, avoid 0 division
+        }
+    };
+    
+    self.update = function update_progress(name, n, d) {
+	return;
+        var bar = self.bars[name];
+        if (!bar) {
+            logger.warning('Attempted to update unregistered progress meter: '+name);
+            return;
+        }
+        
+        var is_percent = !d && n <= 100 && n >= 0;
+        if (is_percent) {
+            bar.percent(n);
+        } else {
+            bar.ratio(n, d || n); // if d is zero, avoid 0 division
+        }
+    };
+    
+    self.destroy = function destroy_pm() {
+        //self.multi.destroy();
+    };
+    return self;
+};
 
 cli.main(function(args, options) {
     // update global constants
@@ -1095,50 +1153,77 @@ cli.main(function(args, options) {
     var recursive     = options.recursive || false;
     var article_count = options.article_count;
     var category_name = options.category_name;
+    var log_file      = options.log_file;
+    var debug_mode    = options.debug
+    var start_time    = new Date();
     
+    if (use_devnull) {
+	if (!debug_mode) {
+            logger.remove(stream_transport);
+            logger.use(stream_transport, {
+		stream: require('fs').createWriteStream(log_file)
+            });
+	}
+        
+        //try {
+            pm = ProgressManager(['QVs']);
+            pm.update('QVs', 0, article_count);
+        /*} catch (e) {
+            logger.warn('No multimeter module found, stdout is gonna be boring.');
+            pm = {};
+            pm.update = pm.inc = function() { return; } // mock multimeter
+        }*/
+    }
+    logger.info('Started run at '+start_time);
     logger.info('Getting up to '+article_count+' articles from '+category_name+'.');
     
     var json_output = get_json_output();
-    function single_on_complete(err, evaluator) {
-        json_output(null, evaluator);
-    }
-    function overall_on_complete(err, successful_evs, failed_titles) { // TODO args for successes/failures
-        var filename = 'output_'+(new Date()).valueOf()+'.csv';
-        var total_evals = successful_evs.length + failed_titles.length;
-        logger.info(failed_titles.length+'/'+total_evals+' evaluations failed:');
-        logger.info(failed_titles);
-        output_csv(filename, successful_evs);
-    }
-    
+
     wm = WindowManager(EV_CONCURRENCY + 2, null, function() {
         get_category(category_name, article_count, recursive, function(err, infos) {
             if(err) {
                 console.error('Error retrieving entries for '+category_name);
-            } else {
-                evaluate_articles(infos, single_on_complete, overall_on_complete);
+		return;
             }
+	    
+	    var expected_count = infos.length;
+	    var complete_count = 0;
+	    var failed_titles = [];
+	    var successful_evs = [];
+	    var per_ev_cb = function per_ev_cb(err, evaluator) { 
+		var dom, title;
+		pm.inc('QVs');
+		complete_count += 1;
+		var count_message = ' ('+complete_count+'/'+expected_count+')'
+		if (err || !evaluator) {
+		    dom   = err.dom;
+		    title = (err && err.title) || 'Unknown article';
+		    logger.warning('Failed to process article: '+title+'. Dropping evaluator.'+count_message);
+		    failed_titles.push(title);
+		} else {
+		    dom   = evaluator.dom;
+		    title = evaluator.article_title;
+		    logger.info('Successfully processed: '+title+count_message);
+		    successful_evs.push(evaluator);
+		    json_output(null, evaluator);
+		}
+                wm.release_window(dom, title);
+
+		if (complete_count >= expected_count) { // TODO overall timeout? timeout between evaluators completing?
+		    var end_time = new Date();
+		    var total_seconds = (end_time.valueOf() - start_time.valueOf()) / 1000;
+		    logger.info('Batch evaluation complete at '+end_time);
+		    logger.info('Total time: '+total_seconds+' seconds.');
+		    logger.info(failed_titles.length+'/'+complete_count+' evaluations failed:');
+		    logger.info(failed_titles);
+		    output_csv(successful_evs);
+		}
+	    }
+            evaluate_articles(infos, per_ev_cb);
         });
     });
 });
 
-function print_page_stats(err, ev) {
-    logger.info("\nPage stats for " + ev.article_title + "\n");
-    for(var stat in ev.data) {
-        logger.info('  - '+stat + ': ' + ev.data[stat]);
-    }
-
-
-    logger.info("\nResults for " + ev.article_title + "\n");
-    for(var area in ev.results) {
-        logger.info('  - '+area + ': ' + ev.results[area].score + '/' + ev.results[area].max);
-    }
-
-    logger.info("\nRecommendations for " + ev.article_title + "\n");
-    var recos = ev.results.recos;
-    for(var attr in recos) {
-        logger.info('  - '+attr + ': ' + recos[attr].cur_stat + ';' + recos[attr].points);
-    }
-}
 
 function escape_field(val) {
     var out_arr = [];
@@ -1161,10 +1246,10 @@ function is_outputtable(val) {
 }
 
 var article_deets = ['article_title', 'article_id', 'revision_id'];
-function output_csv(path, evs/*, callback*/) {
+function output_csv(evs, path/*, callback*/) {
     //TODO: add run date, other metadata in csv comment
     //TODO: use async?
-    
+    var path = path || 'output_'+(new Date()).valueOf()+'.csv';    
     //construct superset of stats for column headings
     var col_names, tmp_names = {};
     for (var i=0; i<evs.length; ++i) {
@@ -1214,8 +1299,7 @@ function output_csv(path, evs/*, callback*/) {
         out_file.write('\n');
     }
     out_file.destroySoon();
-    
-    logger.info('Wrote results to '+path);
+    logger.info('CSV written to '+path);
     //callback();
 }
 
@@ -1244,7 +1328,7 @@ function get_json_output(path) {
 }
 
 function get_info_callback(real_callback) {
-    return function(err, data) {
+    return function info_callback(err, data) {
         var get_info_failed = (err || !(data && data.query));
         if (get_info_failed) {
             logger.info('error getting article info. maybe timed out?');
@@ -1298,7 +1382,7 @@ function evaluate_article_node(article_title, article_id, rev_id, eval_callback)
         },
         function prepare_window(err, info_input, content_input) {
             if (err) {
-                logger.info('Error retrieving info for article "'+article_title+'"');
+                logger.error('Error retrieving info for article "'+article_title+'"');
                 throw err;
             }
             prepare_window_node(err, {'article_info': info_input.results,
@@ -1307,14 +1391,14 @@ function evaluate_article_node(article_title, article_id, rev_id, eval_callback)
         },
         function make_evaluator_wrapper(err, window) {
             if (err) {
-                logger.info('Could not construct window: '+err);
+                logger.error('Could not construct window: '+err);
                 throw err;
             }
             var ev = make_evaluator(window, rewards, this, mq);
         },
         function all_done(err, evaluator) {
             if (err) {
-                logger.info('Could not evaluate article: '+err);
+                logger.error('Could not evaluate article: '+err);
                 if(eval_callback) {
                     eval_callback(err, null);
                 } else {
@@ -1329,3 +1413,7 @@ function evaluate_article_node(article_title, article_id, rev_id, eval_callback)
         }
     );
 }
+
+
+
+
