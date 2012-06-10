@@ -140,7 +140,7 @@ var queue = function queue(workers, description, autostart) {
                 task.callback.apply(this, arguments);
             } catch (exc) {
                 var item_name = task.func.desc || 'unknown queued function';
-                var callback_name = task.callback.title;
+                var callback_name = task.callback.name;
                 logger.error(queue_desc + ': Major error when calling queue task ' + item_name + "'s callback '" + callback_name + "'.");
                 throw exc;
             }
@@ -535,6 +535,18 @@ var make_evaluator = function(dom, rewards, callback, mq) {
         }
     });
     
+    self.to_dict = function to_dict() {
+        var ret = { article_title: self.article_title,
+                    article_id:    self.article_id,
+                    revision_id:   self.revision_id };
+        for ( stat in self.data ) {
+            if (self.data[stat] !== null && is_outputtable(self.data[stat])) {
+                ret[stat] = self.data[stat];
+            }
+        }
+        return ret;
+    };
+    
     self.on_complete = function(callback) {
         callbacks.push(callback);
         // if the queries are complete, we need to manually trigger callback
@@ -601,7 +613,6 @@ var make_evaluator = function(dom, rewards, callback, mq) {
         }
         return result;
     };
-
     
     return self;
 };
@@ -1128,7 +1139,7 @@ var ProgressManager = function ProgressManager(bar_names) {
     }
     
     self.inc = function increment_progress(name) {
-    return;
+        return;
         var bar = self.bars[name];
         if (!bar) {
             logger.warning('Attempted to update unregistered progress bar: '+name);
@@ -1145,7 +1156,7 @@ var ProgressManager = function ProgressManager(bar_names) {
     };
     
     self.update = function update_progress(name, n, d) {
-    return;
+        return;
         var bar = self.bars[name];
         if (!bar) {
             logger.warning('Attempted to update unregistered progress meter: '+name);
@@ -1185,16 +1196,16 @@ cli.main(function(args, options) {
     var start_time    = new Date();
     
     if (use_devnull) {
-    if (!debug_mode) {
+        if (!debug_mode) {
             logger.remove(stream_transport);
             logger.use(stream_transport, {
-        stream: require('fs').createWriteStream(log_file)
+                stream: require('fs').createWriteStream(log_file)
             });
-    }
+        }
         
         //try {
-            pm = ProgressManager(['QVs']);
-            pm.update('QVs', 0, article_count);
+        pm = ProgressManager(['QVs']);
+        pm.update('QVs', 0, article_count);
         /*} catch (e) {
             logger.warn('No multimeter module found, stdout is gonna be boring.');
             pm = {};
@@ -1234,8 +1245,13 @@ cli.main(function(args, options) {
                     successful_evs.push(evaluator);
                     json_output(null, evaluator);
                 }
-                        wm.release_window(dom, title);
+                wm.release_window(dom, title);
 
+                if (successful_evs.length > 0 && successful_evs.length % 1 === 0) {
+                    logger.info('using new csv method');
+                    output_csv_new(successful_evs);
+                }
+                
                 if (complete_count >= expected_count) { // TODO overall timeout? timeout between evaluators completing?
                     var end_time = new Date();
                     var total_seconds = (end_time.valueOf() - start_time.valueOf()) / 1000;
@@ -1252,6 +1268,9 @@ cli.main(function(args, options) {
     });
 });
 
+function json_to_csv(json_filename) {
+    var data = require(json_filename);
+}
 
 function escape_field(val) {
     var out_arr = [];
@@ -1271,6 +1290,71 @@ function escape_field(val) {
 function is_outputtable(val) {
     var val_type = typeof val;
     return !(val_type === 'function' || val_type === 'object');
+}
+
+function output_csv_new(evaluators, path) {
+    var evs = [];
+    //convert to dicts where necessary
+    for (var i=0; i<evaluators.length; ++i) {
+        if (!evaluators[i]) {
+            continue;
+        }
+        if (typeof evaluators[i].to_dict === 'function')  {
+            evs.push(evaluators[i].to_dict());
+        } else {
+            evs.push(evaluators[i]);
+        }
+    }
+    path = path || 'output_' + (new Date()).valueOf() + '.csv';
+    //construct superset of stats for column headings
+    var tmp_names = {};
+    for (var i=0; i<evs.length; ++i) {
+        var ev = evs[i];
+        for (var stat in ev) {
+            tmp_names[stat] = true;
+        }
+    }
+    tmp_names = keys(tmp_names);
+    for (var i=0; i<tmp_names.length; ++i) {
+        var do_output = false;
+        var stat = tmp_names[i];
+        for (var j=0; j<evs.length; ++j) {
+            var ev = evs[j];
+            if (is_outputtable(ev[stat])) {
+                do_output = true;
+            }
+        }
+        if (!do_output) {
+            delete tmp_names[stat];
+        }
+    }
+    var col_names = tmp_names.sort();
+    
+    var fs       = require('fs');
+    var out_file = fs.createWriteStream(path, {'flags': 'w', 'encoding':'utf8'});
+    if (typeof out_file.setEncoding === 'function') {
+        out_file.setEncoding('utf8');
+    }
+    
+    out_file.write(col_names.join(','));
+    out_file.write('\n');
+    for (var i=0; i<evs.length; ++i) {
+        var ev = evs[i];
+        for (var j=0; j<col_names.length; ++j) {
+            var col_name = col_names[j];
+            var cur_stat = ev[col_name];
+            var to_write = (cur_stat !== null && cur_stat !== undefined) ? escape_field(cur_stat) : '';
+            if (is_outputtable(cur_stat)) {
+                out_file.write(to_write);
+            } else {
+                out_file.write('(object)');
+            }
+            out_file.write(',');
+        }
+        out_file.write('\n');
+    }
+    out_file.destroySoon();
+    logger.info('CSV written to '+path);
 }
 
 var article_deets = ['article_title', 'article_id', 'revision_id'];
@@ -1338,7 +1422,7 @@ function get_json_output(path) {
     return function save_ev(err, ev) {
         var to_save = { article_title: ev.article_title,
                         article_id:    ev.article_id,
-                        revision_id:   ev.revision_id};
+                        revision_id:   ev.revision_id };
         for ( stat in ev.data ) {
             if (ev.data[stat] !== null && is_outputtable(ev.data[stat])) {
                 to_save[stat] = ev.data[stat];
