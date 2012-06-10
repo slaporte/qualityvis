@@ -1,0 +1,6 @@
+* Resolve jsdom memory issues (reuse jsdoms, swap innerHTML)
+* Page through category to get all category members.
+* Contextualize inputs
+* Better logging
+* UTF-8 CSV bullllcrap
+* Incremental JSON output

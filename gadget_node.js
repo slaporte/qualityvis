@@ -21,18 +21,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
  
- // TODO: contextualized inputs
- // TODO: pass in precomputed data
  // TODO: save/replay queue?
- // TODO: logging refactor
- // TODO: free memory (start by deleting dom from evaluator)
- // TODO: stream process the evaluators in get_category
- // TODO: Section/subsection word count per paragraph
+ // TODO: report failed inputs on evaluators
  
-// if this page is on a mediawiki site, change to testing to false:
 var testing = !(this.mw);
-
-var write_html_files = true; // make sure to create html folder
 
 var jsdom = require('jsdom');
 var dummy_window = jsdom.jsdom().createWindow();
@@ -41,29 +33,209 @@ var jq_lib = require('jquery');
 var $ = jq_lib.create(dummy_window);
     $.support.cors = true;
 var extend = $.extend;
-
-var global_timeout = 30000;
 var Step = require('./step.js');
 
-if(testing === true) {
-    //var article_title = 'Charizard';
-    var cli = require('cli');
-    cli.parse({
-        article_count: ['n', 'Number of articles to fetch', 'number', 5],
-        category_name: ['c', 'Category of articles to fetch', 'string', 'Category:Featured_articles']
-    });
-    
-    cli.main(function(args, options) {
-        get_category(options.category_name, options.article_count);
-    });
-    
-    //get_category('Category:Articles_with_inconsistent_citation_formats', 2);
-    //get_category('Category:FA-Class_articles', 50);
-} else {
-    var article_title = mw.config.get('wgTitle');
-    var revid = mw.config.get('wgCurRevisionId');
-    var articleId = mw.config.get('wgArticleId');
+// logging setup
+var logger, use_devnull;
+try {
+    var Logger = require('devnull');
+    var stream_transport = require('devnull/transports/stream');
+    logger = new Logger({namespacing: 0,
+                         timestamp: false,});
+    logger.warn = logger.warning; //mock console's interface
+    use_devnull = true;
+} catch (e) {
+    console.warn('devnull logger not found, using console for logging.');
+    logger = console;
+    logger.warning = logger.warn; // mock devnull's interface
+    use_devnull = false;
 }
+
+// these can be overridden at the command line. node gadget_node.js --help for
+// more information
+var DEFAULT_ARTICLE_COUNT = 5;
+var DEFAULT_CATEGORY      = 'Category:Featured_articles';
+var DEFAULT_LOG_FILE      = 'fetch.log';
+var GLOBAL_TIMEOUT        = 6000; // milliseconds
+var GLOBAL_RETRY_COUNT    = 3;
+var EV_CONCURRENCY        = 10;
+var QUERY_CONCURRENCY     = 8;
+var CAT_CONCURRENCY       = 4;
+var OUTPUT_HTML           = false;
+
+var ALL_CATS = Infinity;
+
+// Namespace ID constants
+var ARTICLE_NS  = 0;
+var TALK_NS     = 1;
+var CATEGORY_NS = 14;
+var PORTAL_NS   = 100;
+
+
+function keys(obj) {
+    var ret = [];
+    for(var k in obj) {
+        if (obj.hasOwnProperty(k)) {
+            ret.push(k);
+        }
+    }
+    return ret;
+}
+
+function values(obj) {
+    var ret = [];
+    for(var k in obj) {
+        if (obj.hasOwnProperty(k)) {
+            ret.push(obj[k]);
+        }
+    }
+    return ret;
+}
+
+// TODO: register/save function?
+// TODO: (possibly related to ^) record/replay
+var queue = function queue(workers, description, autostart) {
+    var self = {};
+    queue_desc = description || 'Anonymous queue';
+    
+    self.desc          = queue_desc;
+    self.is_processing = (typeof start === 'undefined') ? true : autostart;
+    self.is_closed     = false;
+    self.pending       = [];
+    self.cur_executing = 0;
+    self.max_executing = workers;
+    
+    self.enqueue = function enqueue(func, callback) {
+        if(!self.is_closed) {
+            self.pending.push({'func':func, 'callback':callback});
+            if(self.is_processing) {
+                process();
+            }
+        }
+    };
+    self.stop = function stop() {
+        self.is_processing = false;
+    };
+    self.close = function close() {
+        self.is_closed = true;
+    };
+    self.start = function start() {
+        self.is_processing = true;
+        process();
+    };
+    self.get_unfinished_count = function get_unfinished_count() {
+        return self.pending.length + self.cur_executing;
+    };
+    
+    var get_retry = function get_retry(task) {
+        return function task_retry() {
+            var item_name = task.func.desc || 'unknown queued function';
+            self.cur_executing -= 1;
+            self.enqueue(task.func, task.callback);
+        };
+    };
+    var get_callback = function get_callback(task) {
+        return function task_callback() {
+            self.cur_executing -= 1;
+            process();
+	    try {
+		task.callback.apply(this, arguments);
+	    } catch (exc) {
+		var item_name = task.func.desc || 'unknown queued function';
+		var callback_name = task.callback.title;
+		logger.error(queue_desc + ': Major error when calling queue task '+item_name+"'s callback '"+callback_name+"'.");
+	    }
+        };
+    };
+    var process = function process() {
+        var do_nothing = ( (self.cur_executing >= self.max_executing) // full
+                         || (self.pending.length <= 0)                // no tasks
+                         || (!self.is_processing));                   // stopped/not started
+        if (do_nothing) {
+            return;
+        }
+        var n = self.pending.pop();
+        
+        var callback = get_callback(n);
+        var retry = get_retry(n);
+        
+        self.cur_executing += 1;
+        try {
+            n.func(callback, retry);
+        } catch (exc){
+            logger.error(queue_desc + ': Major failure :/ ' + n.desc);
+            callback(exc, null);
+        }
+    };
+    return self;
+};
+
+var WindowManager = function WindowManager(count, progress, init_callback) {
+    var jsdom = require('jsdom');
+    var self = {};
+    
+    self.all_windows = all_windows =  [];
+    self.avail_windows = avail_windows = [];
+    self.eval_registry = eval_registry = {};
+    
+    self.window_gets = 0;
+  
+    self.get_window = function get_window(title) {
+        var ret = avail_windows.pop();
+        self.window_gets++;
+        if (!ret) {
+            logger.error('No available windows for "'+title+'"');
+            logger.info('Current window holders are: ');
+            logger.info(keys(eval_registry));
+        } else {
+            eval_registry[title] = ret;
+        }
+        return ret;
+    };
+
+    self.release_window = function release_window(window, title) {
+        if (window) {
+            avail_windows.push(window);
+        } else {
+            logger.warning(title+" did not return a window.");
+        }
+        delete eval_registry[title];
+        
+        return;
+    };
+  
+    for (var i=0; i < count; ++i) {
+        jsdom.env({
+            html: "<html><body></body></html>",
+            done: function(errors, window) {
+                jq_lib.create(window);
+                all_windows.push(window);
+                avail_windows.push(window);
+                if (all_windows.length == count) {
+                    init_callback();
+                }
+            }
+        });
+    }
+    return self;
+};
+
+
+var cli = require('cli');
+cli.parse({
+    article_count:      ['n', 'Number of articles to fetch', 'number', DEFAULT_ARTICLE_COUNT]
+    ,category_name:     ['c', 'Category of articles to fetch', 'string', DEFAULT_CATEGORY]
+    ,recursive:         ['r', 'Also evaluate subcategories recursively']
+    ,evaluator_workers: ['E', 'Number of evaluators to process simultaneously', 'number', EV_CONCURRENCY]
+    ,query_workers:     ['Q', 'Number of web queries to fetch simultaneously', 'number', QUERY_CONCURRENCY]
+    ,cat_workers:       ['C', 'Number of category member lists to fetch simultaneously', 'number', CAT_CONCURRENCY]
+    ,global_timeout:    ['T', 'Amount of time to wait for web queries (in milliseconds)', 'number', GLOBAL_TIMEOUT]
+    ,log_file:          ['L', 'Path of file to log to (tail it for old-style output)', 'string', DEFAULT_LOG_FILE]
+    ,debug:             ['D', 'TBI: disable progress meters, log to stdout at debug loglevel']
+});
+
+var mq, jsdomq, catq, wm, pm;
+
 
 // Convenience functions for reward formulae
 function overStat(threshold, great, reward) {
@@ -136,75 +308,6 @@ var rewards = {
     //rewards.significance = overStat(;
 };
 
-function keys(obj) {
-    var ret = [];
-    for(var k in obj) {
-        if (obj.hasOwnProperty(k)) {
-            ret.push(k);
-        }
-    }
-    return ret;
-}
-
-// TODO: register/save function?
-// TODO: (possibly related to ^) record/replay
-var queue = function(delay) {
-    delay = delay || 250;
-    var self = {};
-    var process, timer;
-    self.is_started = false;
-    self.pending = [];
-    self.enqueue = function(func, callback) {
-        self.pending.push({'func':func, 'callback':callback});
-        self.start();
-    };
-    self.stop = function() {
-        self.is_started = false;
-        timer = null;
-    };
-    self.start = function() {
-        if (!timer) {
-            self.is_started = true;
-            process();
-        }
-    };
-    self.cur_executing = 0;
-    self.max_executing = 12;
-    process = function process_task() {
-        if(self.cur_executing >= self.max_executing) {
-            return;
-        }
-        if(self.pending.length > 0) {
-            var n = self.pending.pop();
-            
-            var callback = function() {
-                console.log('Finished a task, '+self.cur_executing+' tasks still in flight. '+ self.pending.length + ' waiting.');
-                self.cur_executing -= 1;
-                process();
-                n.callback.apply(this, arguments);
-            };
-            var retry = function retry() {
-                var item_name = n.func.name || 'unknown queued function';
-                console.log('retrying '+ item_name);
-                self.enqueue(n.func, n.callback);
-            };
-            
-            self.cur_executing += 1;
-            try {
-                n.func(callback, retry);
-            } catch (exc){
-                console.log('Major failure :/ ');
-                callback(exc, null);
-            }
-        } else {
-            if (self.cur_executing === 0) {
-                self.stop();
-            }
-        }
-    };
-    return self;
-};
-
 var successful_queries = 0;
 var failed_queries = 0;
 var complete_queries = 0;
@@ -214,24 +317,24 @@ function do_query(url, complete_callback, kwargs) {
         url: url,
         type: 'get',
         dataType: 'json',
-        timeout: global_timeout, // TODO: convert to setting. Necessary to detect jsonp error.
+        timeout: GLOBAL_TIMEOUT, //for detecting jsonp errors
         success: function(data) {
             successful_queries++;
-            console.log(successful_queries + ' successful queries.');
             if (successful_queries % 20 === 0) {
                 var util = require('util');
-                console.log('Memory stats:');
-                console.log(util.inspect(process.memoryUsage()));
+                logger.info(successful_queries + ' successful queries.'+
+                    ' (Memory usage: '+process.memoryUsage()['rss']/(1024*1024) + ' MB)');
             }
             complete_callback(null, data);
         },
         error: function(jqXHR, textStatus, errorThrown) {
             failed_queries++;
-            console.log(failed_queries + ' failed queries.' + url);
+            logger.warning(failed_queries + ' failed queries: ' + url);
             complete_callback(errorThrown, null);
         },
         complete: function(jqXHR, textStatus) {
             // TODO: error handling (jsonp doesn't get error() calls for a lot of errors)
+            complete_queries++;
         },
         headers: { 'User-Agent': 'QualityVis/0.0.0 Mahmoud Hashemi makuro@gmail.com' }
     };
@@ -261,43 +364,69 @@ var yql_source = function(query) {
     };
 };
 
+// WIP
+var grokse_input = function(context) {
+    var self;
+    
+    self = {
+        type: 'Grokse',
+        desc: 'Grokse for '+context.article_title,
+        fetch: null,
+        calculate: null
+    };
+    return self;
+};//input('grokseStats', yql_source('select * from json where url ="http://stats.grok.se/json/en/201201/' + article_title + '"'), grokseStats)
+
+
 // TODO configurable retry failure. at least retry in a couple seconds.
 // complete is called on the input actually completely finishing (success/fatal error)
 // ind_complete is called for an individual call's completion (retry)
-var input = function(name, fetch_or_data, process) {
+var input = function input(desc, fetch_or_data, process) {
     var self;
 
-    self = function(complete, retry) {
-        self.name     = name;
+    self = function self(complete, retry) {
+        self.desc     = desc;
         self.attempts = self.attempts + 1 || 1;
         var fetch_callback = function fetch_callback(err, data) {
             self.fetch_data = data; //may or may not be large
-            if (err) {
-                console.log('failed fetch on: '+name+' '+err);
-                self.error = 'Failed to fetch data for '+name;
-                if (self.attempts < 3) {
+            if (err || !data) {
+                //logger.info('failed fetch on: '+desc+' '+err);
+                self.results = null;
+                err = err || 'Unknown error';
+                self.error = 'Fetch failed on'+self.desc+': '+err;
+            } else {
+                try {
+                    if (process) {
+                        self.results = process(data);
+                    } else {
+                        self.results = data;
+                    }
+                } catch (proc_err) {
+                    self.results = null;
+                    self.error = 'Processing failed on '+self.desc+': '+proc_err;
+                    //logger.info(self.error);
+                }
+            }
+            if (self.results) {
+                try {
+                    complete(null, self);
+                } catch (myerr) {
+                    self.results = null;
+                    self.error = 'Exception while completing '+self.desc+', somehow: '+myerr;
+                    complete(null, self);
+                }
+            } else {
+                if (self.attempts <= GLOBAL_RETRY_COUNT) {
                     retry();
                 } else {
-                    complete(null, self);  // err?
+                    self.results = null;
+                    if (self.error) {
+                        self.error += '('+self.attempts+' attempts)';
+                    } else {
+                        self.error = self.desc+' encountered unknown error, failed after '+self.attempts+' retries.';
+                    }
+                    complete(null, self);
                 }
-            }
-            
-            try {
-                if (process) {
-                    self.results = process(data);
-                } else {
-                    self.results = data;
-                }
-            } catch (proc_err) {
-                self.results = null;
-                self.error = 'Failed to process data for '+name;
-                console.log(self.error);
-            }
-            try {
-                complete(null, self);
-            } catch(myerr) {
-                console.log('foo: ' + myerr);
-                throw err;
             }
         };
         
@@ -316,9 +445,7 @@ var input = function(name, fetch_or_data, process) {
     return self;
 };
 
-// One limitation on this model (easily refactored): calculators can't read from data
-// they can only write to it. Mostly this is because we don't know what will or won't
-// be present.
+
 
 // Input refactor steps/notes:
 // 1. Make specialized inputs with template-like URLs
@@ -367,15 +494,18 @@ var make_evaluator = function(dom, rewards, callback, mq) {
         
     }, function calculate_results(err, completed_inputs) {
         if (err) {
-            console.log('One or more inputs failed: ' + err);
+            logger.info('One or more inputs failed: ' + err);
             throw err;
         }
         
         var merged_data = {};
         for (var i = 0; i < completed_inputs.length; ++i) {
             var cur_input = completed_inputs[i];
-            if (!cur_input.results && cur_input.error) {
-                console.log('Input failed: '+ cur_input.name + ' with error: ' + cur_input.error + ' after ' + cur_input.attempts + ' attempts.');
+            if (!cur_input.results) {
+                var err_str = 'Input failed: '+ cur_input.desc;
+                if (cur_input.error && cur_input.attempts) {
+                    err_str += ' with error: ' + cur_input.error + ' after ' + cur_input.attempts + ' attempts.';
+                }
                 self.failed_inputs.push(cur_input);
             } else {
                 for (var prop in cur_input.results) {
@@ -384,20 +514,25 @@ var make_evaluator = function(dom, rewards, callback, mq) {
             }
         }
         self.data = merged_data;
-        return merged_data;
-    }, function eval_complete(err, page_data) {
+        self.results = calc_scores(merged_data, rewards);
+        
+        return self.results;
+        
+    }, function eval_complete(err, eval_results) {
         if (err) {
-            throw err;
-        }
-        var fail_count = self.failed_inputs.length;
-
-        if (fail_count > 0) {
-            console.log('\nWarning: There were ' + fail_count + ' failed inputs.\n');
-        }
-        self.results = calc_scores(page_data, rewards);
-
-        for(var i=0; i < callbacks.length; ++i) {
-            callbacks[i](null, self); //call all the on_complete callbacks
+            var err_type = typeof(err);
+            if (err_type != 'object' && err_type != 'function') {
+                err = new Error(err);
+            }
+            err.dom = self.dom;
+            
+            for(var i=0; i < callbacks.length; ++i) {
+                callbacks[i](err, null); //call all the on_complete callbacks
+            }
+        } else {
+            for(var i=0; i < callbacks.length; ++i) {
+                callbacks[i](null, self); //call all the on_complete callbacks
+            }
         }
     });
     
@@ -472,23 +607,24 @@ var make_evaluator = function(dom, rewards, callback, mq) {
     return self;
 };
 
+// Start calculation functions
+
+// One limitation on this model (easily refactored): calculators can't read from data
+// they can only write to it. Mostly this is because we don't know what will or won't
+// be present.
+
 function domStats(dom) {
     var ret = {},
         $   = dom.jQuery;
 
     function section_stats(header) {
-        var headers = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
+        /* requires jquery */
         var sub_words = [];
         var word_count = 0;
         var len = 0;
-        var headerlevel = headers.indexOf(header);
-        if(headerlevel < 0) {
-            return 0;
-        }
-        var closing_header_selector = headers.slice(0, headerlevel + 1).join(',');
         $(header).each(function() {
             if($(this).text() != "Contents") {
-                sub_words.push($(this).nextUntil(closing_header_selector).text().split(/\b[\s,\.-:;]*/).length);
+                sub_words.push($(this).nextUntil(header).text().split(/\b[\s,\.-:;]*/).length);
             }
         });
         function sortNum(a, b) {
@@ -663,8 +799,6 @@ function revisionStats(data) {
     return data;
 }
 
-// Start calculation functions
-
 function inLinkStats(data) {
     //TODO: if there are 500 backlinks, we need to make another query
     var ret = {};
@@ -707,7 +841,7 @@ function newsStats(data) {
 function wikitrustStats(data) {
     var ret = {};
     var res = data.query.results.body.p;
-    var success = !(res.indexOf('EERROR') == 0);
+    var success = !(res.indexOf('EERROR') === 0);
     if (success) {
         ret.wikitrust = parseFloat(res);
     }
@@ -778,23 +912,24 @@ function prepare_window_node(err, kwargs, callback) {
         revision_id         = article_info.rev_id,
         text                = article.parse.text['*'];
     
-    var jsdom = require('jsdom');
-    
-    if (write_html_files) {
+    if (OUTPUT_HTML) { //TODO: create folder, escape article_title
         var fs       = require('fs');
-        var out_file = fs.createWriteStream('html/'+article_title+'.html', {'flags': 'w', 'encoding':'utf8'});
+        var out_file = fs.createWriteStream('article_html/'+article_title+'.html', {'flags': 'w', 'encoding':'utf8'});
         if (typeof out_file.setEncoding === 'function') {
-            out_file.setEncoding('utf-8');
+            out_file.setEncoding('utf8');
         }
-        out_file.write(text);
+        out_file.write(text, 'utf8');
         out_file.destroySoon();
     }
+
+    var window = wm.get_window(article_title);
+    window.document.innerHTML = '<html><body>'+text+'</body></html>';
     
-    /*var window = {};
     var real_values = {
         'wgTitle': article_title,
         'wgArticleId': article_id,
-        'wgCurRevisionId': revision_id
+        'wgCurRevisionId': revision_id,
+        'wgCategories': article.parse.categories
     };
 
     var mw = {}; //building a mock object to look like mw (loaded on wikipedia by javascript)
@@ -803,99 +938,292 @@ function prepare_window_node(err, kwargs, callback) {
         return real_values[key] || null;
     };
     window.mw = mw; //attach mock object to fake window
-    callback(null, window); */
-    
-    jsdom.env({
-        html: text,
-        done: function(errors, window) {
-            window.jQuery = jq_lib.create(window);
-            var real_values = {
-                'wgTitle': article_title,
-                'wgArticleId': article_id,
-                'wgCurRevisionId': revision_id,
-                'wgCategories': article.parse.categories
-            };
-
-            var mw = {}; //building a mock object to look like mw (loaded on wikipedia by javascript)
-            mw.config = {};
-            mw.config.get = function(key) {
-                return real_values[key] || null;
-            };
-            window.mw = mw; //attach mock object to fake window
-            callback(null, window);
-        }
-    });
+    callback(null, window);
 }
 
-function get_category(name, limit) {
-    // create/open file
-    // retrieve article list, paging through if necessary
+// This is a lower-level function, you probably want to use get_category()
+function get_category_members(cat_name, limit, get_cm_callback, continue_str, results_so_far) {
+    var url = 'http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=' 
+               + encodeURIComponent(cat_name) 
+               + '&prop=info&gcmlimit=' 
+               + encodeURIComponent(limit) + '&format=json';
+    if(continue_str) {
+        url += '&gcmcontinue='+continue_str;
+    }
     
+    results_so_far = results_so_far || [];
+    function cat_results_callback(err, data) {
+        var pages, cont_str;
+        try {
+            cont_str = data['query-continue'].categorymembers.gcmcontinue;
+        } catch (e) {
+            cont_str = null;
+        }
+        // get page infos from data
+        try {
+            pages = data.query.pages;
+        } catch (e) {
+            pages = {};
+            logger.error('Error finding pages in query results.');
+        }
 
-
-    console.log('getting up to '+limit+' articles for '+name);
-    Step( function get_article_names() {
-            var url = 'http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=' 
-                       + encodeURIComponent(name) 
-                       + '&prop=info&gcmlimit=' 
-                       + encodeURIComponent(limit) + '&format=json';
-            do_query(url, this);
-        }, function evaluate_articles(err, data) {
-            if (err) {
-                console.log('Could not retrieve category list: '+name+'.');
-                throw err;
-            }
-            console.log('did the category query');
-            var pages = data.query.pages;
-            var infos = [];
-
-            console.log(keys(pages).length + ' total pages got.');
-            for(var key in pages){
-                var page = pages[key];
-                if(page.ns === 0) {
-                    infos.push({'article_title': page.title.replace(/\s/g,'_'),
-                                'article_id'   : page.pageid,
-                                'rev_id'       : page.lastrevid
+        logger.info(keys(pages).length + ' pages got.');
+        
+        for(var key in pages){
+            var page = pages[key];
+            results_so_far.push({'article_title': page.title.replace(/\s/g,'_'),
+                                 'article_id'   : page.pageid,
+                                 'rev_id'       : page.lastrevid,
+                                 'ns'           : page.ns
                                 });
-                }
-            }
-            console.log(infos.length + ' processable infos got.');
-            var articles_group = this.group();
-            for (var i=0; i < infos.length; ++i) {
-                var article_title = infos[i].article_title,
-                    article_id    = infos[i].article_id,
-                    rev_id        = infos[i].rev_id;
-                evaluate_article_node(article_title, article_id, rev_id, articles_group());
-            }
-        }, function output_evaluations(err, evs) {
-            if (err) {
-                throw err;
-            }
-            var filename = 'output_'+(new Date()).valueOf()+'.csv';
-            output_csv(filename, evs);
+        }
+        //if not has continue || limit reached, call the real callback (aka evaluate articles)
+        if (!cont_str || results_so_far.length >= limit) {
+            get_cm_callback(null, results_so_far);
+        } else {
+            get_category_members(cat_name, limit, get_cm_callback, cont_str, results_so_far);
+        }
+    };
+    do_query(url, cat_results_callback);
+}
+
+function get_cm_factory(name, limit) {
+    return (function(queue_callback, retry) {
+                get_category_members(name, limit, queue_callback);
+            });
+}
+
+function get_cat_factory(name, limit, recursive, subcats, articles) {
+    return (function(queue_callback, retry) {
+            get_category(name, limit, recursive, queue_callback, subcats, articles);
         });
 }
 
-function print_page_stats(err, ev) {
-    console.log("\nPage stats for " + ev.article_title + "\n");
-    for(var stat in ev.data) {
-        console.log('  - '+stat + ': ' + ev.data[stat]);
+// TODO: prioritize breadth by enabling priority queue
+function get_category(name, limit, recursive, get_cat_done_cb, subcats, articles) {
+    limit = limit || ALL_CATS;
+    recursive = recursive || false;
+    
+    var subcats = subcats || {};
+    var articles = articles || {};
+    function cat_callback_wrapper(real_cat_cb, subcats, articles) {
+        return (function get_cat_callback(err, cat_mems) {
+            if(err) {
+                real_cat_cb(err, null);
+            }
+            for (var i=0; i<cat_mems.length; i += 1) {
+                var mem = cat_mems[i];
+                if (mem.ns == CATEGORY_NS) {
+                    if (!(mem.article_id in subcats)) {
+                        subcats[mem.article_id] = mem;
+                        if (recursive) {
+                            catq.enqueue(get_cm_factory(mem.article_title, limit),
+                                         cat_callback_wrapper(real_cat_cb, subcats, articles));
+                        }
+                    }
+                } else if (mem.ns == ARTICLE_NS){
+                    if (!(mem.article_id in articles)) {
+                        articles[mem.article_id] = mem;
+                    }
+                }
+            }
+            var article_count = keys(articles).length;
+            var is_complete = (article_count >= limit) || catq.get_unfinished_count() <= 0;
+            if( is_complete && !catq.is_closed ) {
+                catq.stop();
+                catq.close();
+                real_cat_cb(null, values(articles).slice(0, limit));
+            }
+        });
     }
+    catq.enqueue(get_cm_factory(name, limit),
+                 cat_callback_wrapper(get_cat_done_cb, subcats, articles));
+}
 
-
-    console.log("\nResults for " + ev.article_title + "\n");
-    for(var area in ev.results) {
-        console.log('  - '+area + ': ' + ev.results[area].score + '/' + ev.results[area].max);
-    }
-
-    console.log("\nRecommendations for " + ev.article_title + "\n");
-    var recos = ev.results.recos;
-    for(var attr in recos) {
-        console.log('  - '+attr + ': ' + recos[attr].cur_stat + ';' + recos[attr].points);
+function evaluate_articles(infos, per_ev_cb) {    
+    for (var i=0; i < infos.length; ++i) {
+        var article_title = infos[i].article_title,
+        article_id    = infos[i].article_id,
+        rev_id        = infos[i].rev_id;
+        
+        var get_eval_wrapper = function(article_title, article_id, rev_id) {
+            return function eval_article_wrapper(queue_callback, retry) { //TODO: use this retry?
+                evaluate_article_node(article_title, article_id, rev_id, queue_callback);
+            }
+        };
+        var get_eval_callback = function(article_title, per_ev_cb) {
+            return function eval_callback(err, evaluator) {
+                if (err) {
+		    err.title = article_title;
+		    per_ev_cb(err, null);
+                } else {
+                    per_ev_cb(null, evaluator);
+                }
+            }
+        }
+        jsdomq.enqueue(get_eval_wrapper(article_title, article_id, rev_id), 
+                       get_eval_callback(article_title, per_ev_cb));
     }
 }
 
-var mq = queue(50);
+var ProgressManager = function ProgressManager(bar_names) {
+    var self = {};
+    var multimeter = require('multimeter');
+    
+    var multi = self.multi = null; //multimeter(process); // TODO: make a working 'multimeter'
+    //multi.charm.on('^C', process.exit);
+    
+    var bars = self.bars = {};
+    
+    var offset = 3;
+    for (var i=0; i<bar_names.length; ++i) {
+        offset = (offset < bar_names[i].length) ? bar_names[i].length : offset;
+    }
+    offset += 2; // room for colon + whitespace
+    
+    var config = {
+        width : 50 - offset,
+        solid : {
+            text : '|',
+            foreground : 'white',
+            background : 'blue'
+        },
+        empty : { text : ' ' },
+    };
+    
+    //multi.write('\nQualityVis progress and metrics:\n\n');
+    for (var i=0; i<bar_names.length; ++i) {
+        var name = bar_names[i];
+        //multi.write(name+': \n');
+        var bar = bars[name] = {};//multi.rel(offset, i, config);
+        bar.last_n = 0;
+        bar.last_d = false;
+    }
+    
+    self.inc = function increment_progress(name) {
+	return;
+        var bar = self.bars[name];
+        if (!bar) {
+            logger.warning('Attempted to update unregistered progress bar: '+name);
+            return;
+        }
+        var n = bar.last_n;
+        var d = bar.last_d;
+        if (d === false) {
+            n = Math.min(n, 100);
+            bar.percent(n);
+        } else {
+            bar.ratio(n, d || n); // if d is zero, avoid 0 division
+        }
+    };
+    
+    self.update = function update_progress(name, n, d) {
+	return;
+        var bar = self.bars[name];
+        if (!bar) {
+            logger.warning('Attempted to update unregistered progress meter: '+name);
+            return;
+        }
+        
+        var is_percent = !d && n <= 100 && n >= 0;
+        if (is_percent) {
+            bar.percent(n);
+        } else {
+            bar.ratio(n, d || n); // if d is zero, avoid 0 division
+        }
+    };
+    
+    self.destroy = function destroy_pm() {
+        //self.multi.destroy();
+    };
+    return self;
+};
+
+cli.main(function(args, options) {
+    // update global constants
+    EV_CONCURRENCY    = options.evaluator_workers;
+    QUERY_CONCURRENCY = options.query_workers;
+    CAT_CONCURRENCY   = options.cat_workers;
+    GLOBAL_TIMEOUT    = options.global_timeout;
+    
+    mq     = queue(QUERY_CONCURRENCY, 'Query queue');
+    jsdomq = queue(EV_CONCURRENCY, 'Evaluator queue');
+    catq   = queue(CAT_CONCURRENCY, 'Category queue');
+
+    var recursive     = options.recursive || false;
+    var article_count = options.article_count;
+    var category_name = options.category_name;
+    var log_file      = options.log_file;
+    var debug_mode    = options.debug
+    var start_time    = new Date();
+    
+    if (use_devnull) {
+	if (!debug_mode) {
+            logger.remove(stream_transport);
+            logger.use(stream_transport, {
+		stream: require('fs').createWriteStream(log_file)
+            });
+	}
+        
+        //try {
+            pm = ProgressManager(['QVs']);
+            pm.update('QVs', 0, article_count);
+        /*} catch (e) {
+            logger.warn('No multimeter module found, stdout is gonna be boring.');
+            pm = {};
+            pm.update = pm.inc = function() { return; } // mock multimeter
+        }*/
+    }
+    logger.info('Started run at '+start_time);
+    logger.info('Getting up to '+article_count+' articles from '+category_name+'.');
+    
+    var json_output = get_json_output();
+
+    wm = WindowManager(EV_CONCURRENCY + 2, null, function() {
+        get_category(category_name, article_count, recursive, function(err, infos) {
+            if(err) {
+                console.error('Error retrieving entries for '+category_name);
+		return;
+            }
+	    
+	    var expected_count = infos.length;
+	    var complete_count = 0;
+	    var failed_titles = [];
+	    var successful_evs = [];
+	    var per_ev_cb = function per_ev_cb(err, evaluator) { 
+		var dom, title;
+		pm.inc('QVs');
+		complete_count += 1;
+		var count_message = ' ('+complete_count+'/'+expected_count+')'
+		if (err || !evaluator) {
+		    dom   = err.dom;
+		    title = (err && err.title) || 'Unknown article';
+		    logger.warning('Failed to process article: '+title+'. Dropping evaluator.'+count_message);
+		    failed_titles.push(title);
+		} else {
+		    dom   = evaluator.dom;
+		    title = evaluator.article_title;
+		    logger.info('Successfully processed: '+title+count_message);
+		    successful_evs.push(evaluator);
+		    json_output(null, evaluator);
+		}
+                wm.release_window(dom, title);
+
+		if (complete_count >= expected_count) { // TODO overall timeout? timeout between evaluators completing?
+		    var end_time = new Date();
+		    var total_seconds = (end_time.valueOf() - start_time.valueOf()) / 1000;
+		    logger.info('Batch evaluation complete at '+end_time);
+		    logger.info('Total time: '+total_seconds+' seconds.');
+		    logger.info(failed_titles.length+'/'+complete_count+' evaluations failed:');
+		    logger.info(failed_titles);
+		    output_csv(successful_evs);
+		}
+	    }
+            evaluate_articles(infos, per_ev_cb);
+        });
+    });
+});
+
 
 function escape_field(val) {
     var out_arr = [];
@@ -918,9 +1246,10 @@ function is_outputtable(val) {
 }
 
 var article_deets = ['article_title', 'article_id', 'revision_id'];
-function output_csv(path, evs, callback) {
+function output_csv(evs, path/*, callback*/) {
     //TODO: add run date, other metadata in csv comment
     //TODO: use async?
+    var path = path || 'output_'+(new Date()).valueOf()+'.csv';    
     //construct superset of stats for column headings
     var col_names, tmp_names = {};
     for (var i=0; i<evs.length; ++i) {
@@ -949,7 +1278,7 @@ function output_csv(path, evs, callback) {
     var fs       = require('fs');
     var out_file = fs.createWriteStream(path, {'flags': 'w', 'encoding':'utf8'});
     if (typeof out_file.setEncoding === 'function') {
-        out_file.setEncoding('utf-8');
+        out_file.setEncoding('utf8');
     }
     
     out_file.write(col_names.join(','));
@@ -970,24 +1299,46 @@ function output_csv(path, evs, callback) {
         out_file.write('\n');
     }
     out_file.destroySoon();
-    
-    console.log('Wrote results to '+path);
+    logger.info('CSV written to '+path);
     //callback();
 }
 
+function get_json_output(path) {
+    var fs       = require('fs');
+    var path     = path || 'output_'+(new Date()).valueOf()+'.json';
+    var all_ev_outputs = {};
+    return function save_ev(err, ev) {
+        var to_save = { article_title: ev.article_title,
+                        article_id:    ev.article_id,
+                        revision_id:   ev.revision_id};
+        for ( stat in ev.data ) {
+            if (ev.data[stat] !== null && is_outputtable(ev.data[stat])) {
+                to_save[stat] = ev.data[stat];
+            }
+        }
+        
+        var out_file = fs.createWriteStream(path, {'flags': 'w', 'encoding':'utf8'});
+        if (typeof out_file.setEncoding === 'function') {
+            out_file.setEncoding('utf8');
+        }
+        all_ev_outputs[ev.article_title] = to_save;
+        out_file.write(JSON.stringify(all_ev_outputs));
+        out_file.destroySoon();
+    };
+}
 
 function get_info_callback(real_callback) {
-    return function(err, data) {
+    return function info_callback(err, data) {
         var get_info_failed = (err || !(data && data.query));
         if (get_info_failed) {
-            console.log('error getting info. maybe timed out?');
+            logger.info('error getting article info. maybe timed out?');
             return;
         } 
         var page_ids = keys(data.query.pages),
             pages    = data.query.pages;
         
         if (page_ids.length == 0) {
-            console.log('No article with title '+ article_title + ' found.');
+            logger.info('No article with title '+ article_title + ' found.');
             return;
         }
         var article_id    = page_ids[0],
@@ -1004,7 +1355,7 @@ function get_info_callback(real_callback) {
 function evaluate_article_node(article_title, article_id, rev_id, eval_callback) {
     Step(
         function start() {
-            console.log("Start QV on "+article_title);
+            logger.info("Start QV on "+article_title);
             
             var info_callback = this.parallel();
             var content_callback = this.parallel();
@@ -1031,8 +1382,8 @@ function evaluate_article_node(article_title, article_id, rev_id, eval_callback)
         },
         function prepare_window(err, info_input, content_input) {
             if (err) {
-                console.log('Error retrieving info for article "'+article_title+'"');
-                throw err; //return //TODO how to give up?
+                logger.error('Error retrieving info for article "'+article_title+'"');
+                throw err;
             }
             prepare_window_node(err, {'article_info': info_input.results,
                                       'article': content_input.results},
@@ -1040,26 +1391,21 @@ function evaluate_article_node(article_title, article_id, rev_id, eval_callback)
         },
         function make_evaluator_wrapper(err, window) {
             if (err) {
-                console.log('Could not construct window: '+err);
+                logger.error('Could not construct window: '+err);
                 throw err;
             }
             var ev = make_evaluator(window, rewards, this, mq);
         },
         function all_done(err, evaluator) {
             if (err) {
-                console.log('Could not evaluate article: '+err);
+                logger.error('Could not evaluate article: '+err);
                 if(eval_callback) {
                     eval_callback(err, null);
                 } else {
-                    throw err; //return //TODO how to give up?  
+                    throw err;
                 }
             } else {
-                if(evaluator.window) {
-                    evaluator.window.close();
-                    delete evaluator.window;
-                }
-                console.log('finished '+evaluator.article_title);
-                //print_page_stats(err, evaluator);
+                logger.info('Successfully finished '+evaluator.article_title);
                 if (eval_callback) {
                     eval_callback(null, evaluator);
                 }
