@@ -23,8 +23,6 @@
  
  // TODO: save/replay queue?
  // TODO: report failed inputs on evaluators
- 
-var testing = !(this.mw);
 
 var jsdom = require('jsdom');
 var dummy_window = jsdom.jsdom().createWindow();
@@ -1068,7 +1066,7 @@ function evaluate_articles(infos, per_ev_cb) {
 
 var ProgressManager = function ProgressManager(bar_names) {
     var self = {};
-    var multimeter = require('multimeter');
+    //var multimeter = require('multimeter');
     
     var multi = self.multi = null; //multimeter(process); // TODO: make a working 'multimeter'
     //multi.charm.on('^C', process.exit);
