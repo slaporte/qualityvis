@@ -1177,6 +1177,37 @@ var ProgressManager = function ProgressManager(bar_names) {
     return self;
 };
 
+function zero_fill(number, width) {
+    width -= number.toString().length;
+    if ( width > 0 )
+    {
+	return new Array( width + (/\./.test( number ) ? 2 : 1) ).join( '0' ) + number;
+    }
+    return number + ""; // always return a string
+}
+
+// cat_name can be any string, but function has special handling for cat_name
+// expected_count is some number, presumably
+// start_time is a Date object
+// extension is the file extension including the '.' (e.g., '.json')
+function generate_filename(cat_name, expected_count, start_time, extension) {
+    var path_lib = require('path');
+    cat_name = cat_name.replace('Category:', '');
+    var prefix = cat_name + '_' + expected_count + '_' + start_time.getFullYear() +''+ (start_time.getMonth()+1) +''+ start_time.getDate();
+    var filename = prefix + extension;
+    if (path_lib.existsSync(filename)) {
+	var suffix;
+	for (var i=2; i<100; ++i) {
+	    suffix = zero_fill(i,3);
+	    if (!path_lib.existsSync(prefix+suffix+extension)) {
+		filename = prefix + suffix + extension;
+		break;
+	    }
+	}
+    }
+    return filename;
+}
+
 cli.main(function(args, options) {
     // update global constants
     EV_CONCURRENCY    = options.evaluator_workers;
@@ -1198,10 +1229,10 @@ cli.main(function(args, options) {
     if (use_devnull) {
         if (!debug_mode) {
             logger.remove(stream_transport);
-            logger.use(stream_transport, {
-                stream: require('fs').createWriteStream(log_file)
-            });
         }
+	logger.use(stream_transport, {
+                stream: require('fs').createWriteStream(log_file)
+        });
         
         //try {
         pm = ProgressManager(['QVs']);
@@ -1214,8 +1245,6 @@ cli.main(function(args, options) {
     }
     logger.info('Started run at '+start_time);
     logger.info('Getting up to '+article_count+' articles from '+category_name+'.');
-    
-    var json_output = get_json_output();
 
     wm = WindowManager(EV_CONCURRENCY + 2, null, function() {
         get_category(category_name, article_count, recursive, function(err, infos) {
@@ -1228,6 +1257,12 @@ cli.main(function(args, options) {
             var complete_count = 0;
             var failed_titles = [];
             var successful_evs = [];
+
+	    var csv_name = generate_filename(category_name, expected_count, start_time, '.csv');
+	    var json_name = generate_filename(category_name, expected_count, start_time, '.json');
+	    var json_output = get_json_output(json_name);
+	    logger.info('Outputting results to '+csv_name);
+
             var per_ev_cb = function per_ev_cb(err, evaluator) {
                 var dom, title;
                 pm.inc('QVs');
@@ -1244,13 +1279,12 @@ cli.main(function(args, options) {
                     logger.info('Successfully processed: '+title+count_message);
                     successful_evs.push(evaluator);
                     json_output(null, evaluator);
+                    if (successful_evs.length > 0 && successful_evs.length % 10 === 0) {
+			output_csv(successful_evs, csv_name);
+                    }
                 }
                 wm.release_window(dom, title);
 
-                if (successful_evs.length > 0 && successful_evs.length % 1 === 0) {
-                    logger.info('using new csv method');
-                    output_csv_new(successful_evs);
-                }
                 
                 if (complete_count >= expected_count) { // TODO overall timeout? timeout between evaluators completing?
                     var end_time = new Date();
@@ -1259,7 +1293,7 @@ cli.main(function(args, options) {
                     logger.info('Total time: ' + total_seconds + ' seconds.');
                     logger.info(failed_titles.length + '/' +complete_count + ' evaluations failed:');
                     logger.info(failed_titles);
-                    output_csv(successful_evs);
+                    output_csv(successful_evs, csv_name);
                 }
             };
 
@@ -1274,7 +1308,7 @@ function json_to_csv(json_filename) {
 
 function escape_field(val) {
     var out_arr = [];
-    if(typeof(val) === 'string') {
+    if(typeof val === 'string') {
         for (var i = 0; i < val.length; i++) {
             if (val[i] === '"') {
                 out_arr.push('"');
@@ -1289,10 +1323,13 @@ function escape_field(val) {
 
 function is_outputtable(val) {
     var val_type = typeof val;
-    return !(val_type === 'function' || val_type === 'object');
+    return !(val_type === 'function' || val_type === 'object' || val_type === 'undefined');
 }
 
-function output_csv_new(evaluators, path) {
+var begin_attrs = ['article_title', 'article_id', 'revision_id'];
+var end_attrs = ['assessment']
+function output_csv(evaluators, path) {
+    path = path || 'output_' + (new Date()).valueOf() + '.csv';
     var evs = [];
     //convert to dicts where necessary
     for (var i=0; i<evaluators.length; ++i) {
@@ -1305,7 +1342,6 @@ function output_csv_new(evaluators, path) {
             evs.push(evaluators[i]);
         }
     }
-    path = path || 'output_' + (new Date()).valueOf() + '.csv';
     //construct superset of stats for column headings
     var tmp_names = {};
     for (var i=0; i<evs.length; ++i) {
@@ -1314,10 +1350,8 @@ function output_csv_new(evaluators, path) {
             tmp_names[stat] = true;
         }
     }
-    tmp_names = keys(tmp_names);
-    for (var i=0; i<tmp_names.length; ++i) {
+    for (var stat in tmp_names) {
         var do_output = false;
-        var stat = tmp_names[i];
         for (var j=0; j<evs.length; ++j) {
             var ev = evs[j];
             if (is_outputtable(ev[stat])) {
@@ -1328,7 +1362,16 @@ function output_csv_new(evaluators, path) {
             delete tmp_names[stat];
         }
     }
-    var col_names = tmp_names.sort();
+    for (var i=0; i<begin_attrs.length; ++i) {
+	delete tmp_names[begin_attrs[i]];
+    }
+    for (var i=0; i<end_attrs.length; ++i) {
+	delete tmp_names[end_attrs[i]];
+    }
+    var col_names = [];
+    col_names.push.apply(col_names, begin_attrs);
+    col_names.push.apply(col_names, keys(tmp_names).sort());
+    col_names.push.apply(col_names, end_attrs);
     
     var fs       = require('fs');
     var out_file = fs.createWriteStream(path, {'flags': 'w', 'encoding':'utf8'});
@@ -1355,64 +1398,6 @@ function output_csv_new(evaluators, path) {
     }
     out_file.destroySoon();
     logger.info('CSV written to '+path);
-}
-
-var article_deets = ['article_title', 'article_id', 'revision_id'];
-function output_csv(evs, path/*, callback*/) {
-    //TODO: add run date, other metadata in csv comment
-    //TODO: use async?
-    path = path || 'output_' + (new Date()).valueOf() + '.csv';
-    //construct superset of stats for column headings
-    var col_names, tmp_names = {};
-    for (var i=0; i<evs.length; ++i) {
-        var ev = evs[i];
-        for (var stat in ev.data) {
-            tmp_names[stat] = true;
-        }
-    }
-    for (var i=0; i<tmp_names.length; ++i) {
-        var do_output = false;
-        var stat = tmp_names[i];
-        for (var j=0; i<evs.length; ++i) {
-            var ev = evs[j];
-            if (is_outputtable(ev[stat])) {
-                do_output = true;
-            }
-        }
-        if (!do_output) {
-            delete tmp_names[stat];
-        }
-    }
-    col_names = [];
-    col_names.push.apply(col_names, article_deets);
-    col_names.push.apply(col_names, keys(tmp_names).sort());
-    
-    var fs       = require('fs');
-    var out_file = fs.createWriteStream(path, {'flags': 'w', 'encoding':'utf8'});
-    if (typeof out_file.setEncoding === 'function') {
-        out_file.setEncoding('utf8');
-    }
-    
-    out_file.write(col_names.join(','));
-    out_file.write('\n');
-    for (var i=0; i<evs.length; ++i) {
-        var ev = evs[i];
-        for (var j=0; j<col_names.length; ++j) {
-            var col_name = col_names[j];
-            var cur_stat = ev[col_name] || ev.data[col_name];
-            var to_write = (cur_stat !== null && cur_stat !== undefined) ? escape_field(cur_stat) : '';
-            if (is_outputtable(cur_stat)) {
-                out_file.write(to_write);
-            } else {
-                out_file.write('(object)');
-            }
-            out_file.write(',');
-        }
-        out_file.write('\n');
-    }
-    out_file.destroySoon();
-    logger.info('CSV written to '+path);
-    //callback();
 }
 
 function get_json_output(path) {
