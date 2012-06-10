@@ -10,3 +10,4 @@ log*
 article_html/*.html
 
 node_modules
+html
