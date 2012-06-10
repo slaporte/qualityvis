@@ -138,13 +138,14 @@ var queue = function queue(workers, description, autostart) {
         return function task_callback() {
             self.cur_executing -= 1;
             process();
-        try {
-        task.callback.apply(this, arguments);
-        } catch (exc) {
-        var item_name = task.func.desc || 'unknown queued function';
-        var callback_name = task.callback.title;
-        logger.error(queue_desc + ': Major error when calling queue task '+item_name+"'s callback '"+callback_name+"'.");
-        }
+            try {
+                task.callback.apply(this, arguments);
+            } catch (exc) {
+                var item_name = task.func.desc || 'unknown queued function';
+                var callback_name = task.callback.title;
+                logger.error(queue_desc + ': Major error when calling queue task ' + item_name + "'s callback '" + callback_name + "'.");
+                throw exc;
+            }
         };
     };
     var process = function process() {
@@ -481,7 +482,7 @@ var make_evaluator = function(dom, rewards, callback, mq) {
             ,input('searchStats', web_source('http://ajax.googleapis.com/ajax/services/search/web?v=1.0&q=' + article_title), searchStats)
             ,input('newsStats',  web_source('http://ajax.googleapis.com/ajax/services/search/news?v=1.0&q=' + article_title), newsStats)
             ,input('wikitrustStats', yql_source('select * from html where url ="http://en.collaborativetrust.com/WikiTrust/RemoteAPI?method=quality&revid=' + revision_id + '"'), wikitrustStats)
-            ,input('grokseStats', yql_source('select * from json where url ="http://stats.grok.se/json/en/201201/' + article_title + '"'), grokseStats)
+            ,input('grokseStats', yql_source('select * from json where url ="http://stats.grok.se/json/en/latest90/' + article_title + '"'), grokseStats)
             ,input('getAssessment', web_source('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + article_title + '&rvprop=content&redirects=true&format=json'), getAssessment)
             ,input('domStats', dom, domStats)
             //,input('bingWebStats', web_source('http://api.bing.net/json.aspx?Appid=202F17E764089C60340ACA3FBBC558453354DA76&query=' + article_title  +  '&web.count=1&news.count=1&sources=web+news'), bingWebStats)
@@ -849,8 +850,18 @@ function wikitrustStats(data) {
 }
 
 function grokseStats(data) {
-    var ret = {};
-    ret.pageVisits = data.query.results.json;
+    var ret = { view_total: 0, view_max: 0, view_min: Infinity };
+    data = data.query.results.json;
+    var views = values(data['daily_views']);
+
+    for(var i=0; i<views.length; i++) {
+        var curview = parseInt(views[i], 10);
+        ret.view_total += curview;
+        ret.view_max = (curview > ret.view_max) ? curview : ret.view_max;
+        ret.view_min = (curview < ret.view_min) ? curview : ret.view_min;
+    }
+    ret.view_average = ret.view_total / views.length;
+    
     return ret;
 }
 
@@ -1038,6 +1049,10 @@ function get_category(name, limit, recursive, get_cat_done_cb, subcats, articles
                     if (!(mem.article_id in articles)) {
                         articles[mem.article_id] = mem;
                     }
+                } else if (mem.ns == TALK_NS){
+                    if(!(mem.article_id in articles)) {
+                        articles[mem.article_id] = {'article_title': mem.article_title.replace('Talk:', '') };
+                    }
                 }
             }
             var article_count = keys(articles).length;
@@ -1168,7 +1183,7 @@ cli.main(function(args, options) {
     var article_count = options.article_count;
     var category_name = options.category_name;
     var log_file      = options.log_file;
-    var debug_mode    = options.debug
+    var debug_mode    = options.debug;
     var start_time    = new Date();
     
     if (use_devnull) {
@@ -1197,42 +1212,43 @@ cli.main(function(args, options) {
         get_category(category_name, article_count, recursive, function(err, infos) {
             if(err) {
                 console.error('Error retrieving entries for '+category_name);
-        return;
+                return;
             }
         
-        var expected_count = infos.length;
-        var complete_count = 0;
-        var failed_titles = [];
-        var successful_evs = [];
-        var per_ev_cb = function per_ev_cb(err, evaluator) {
-        var dom, title;
-        pm.inc('QVs');
-        complete_count += 1;
-        var count_message = ' ('+complete_count+'/'+expected_count+')';
-        if (err || !evaluator) {
-            dom   = err.dom;
-            title = (err && err.title) || 'Unknown article';
-            logger.warning('Failed to process article: '+title+'. Dropping evaluator.'+count_message);
-            failed_titles.push(title);
-        } else {
-            dom   = evaluator.dom;
-            title = evaluator.article_title;
-            logger.info('Successfully processed: '+title+count_message);
-            successful_evs.push(evaluator);
-            json_output(null, evaluator);
-        }
-                wm.release_window(dom, title);
+            var expected_count = infos.length;
+            var complete_count = 0;
+            var failed_titles = [];
+            var successful_evs = [];
+            var per_ev_cb = function per_ev_cb(err, evaluator) {
+                var dom, title;
+                pm.inc('QVs');
+                complete_count += 1;
+                var count_message = ' (' + complete_count + '/' + expected_count + ')';
+                if (err || !evaluator) {
+                    dom   = err.dom;
+                    title = (err && err.title) || 'Unknown article';
+                    logger.warning('Failed to process article: ' + title + '. Dropping evaluator.' + count_message);
+                    failed_titles.push(title);
+                } else {
+                    dom   = evaluator.dom;
+                    title = evaluator.article_title;
+                    logger.info('Successfully processed: '+title+count_message);
+                    successful_evs.push(evaluator);
+                    json_output(null, evaluator);
+                }
+                        wm.release_window(dom, title);
 
-        if (complete_count >= expected_count) { // TODO overall timeout? timeout between evaluators completing?
-            var end_time = new Date();
-            var total_seconds = (end_time.valueOf() - start_time.valueOf()) / 1000;
-            logger.info('Batch evaluation complete at '+end_time);
-            logger.info('Total time: '+total_seconds+' seconds.');
-            logger.info(failed_titles.length+'/'+complete_count+' evaluations failed:');
-            logger.info(failed_titles);
-            output_csv(successful_evs);
-        }
-        };
+                if (complete_count >= expected_count) { // TODO overall timeout? timeout between evaluators completing?
+                    var end_time = new Date();
+                    var total_seconds = (end_time.valueOf() - start_time.valueOf()) / 1000;
+                    logger.info('Batch evaluation complete at ' + end_time);
+                    logger.info('Total time: ' + total_seconds + ' seconds.');
+                    logger.info(failed_titles.length + '/' +complete_count + ' evaluations failed:');
+                    logger.info(failed_titles);
+                    output_csv(successful_evs);
+                }
+            };
+
             evaluate_articles(infos, per_ev_cb);
         });
     });
@@ -1248,7 +1264,7 @@ function escape_field(val) {
             }
             out_arr.push(val[i]);
         }
-        return '"'+out_arr.join('')+'"';
+        return '"' + out_arr.join('') + '"';
     } else {
         return val;
     }
@@ -1263,7 +1279,7 @@ var article_deets = ['article_title', 'article_id', 'revision_id'];
 function output_csv(evs, path/*, callback*/) {
     //TODO: add run date, other metadata in csv comment
     //TODO: use async?
-    path = path || 'output_'+(new Date()).valueOf()+'.csv';
+    path = path || 'output_' + (new Date()).valueOf() + '.csv';
     //construct superset of stats for column headings
     var col_names, tmp_names = {};
     for (var i=0; i<evs.length; ++i) {
@@ -1285,7 +1301,7 @@ function output_csv(evs, path/*, callback*/) {
             delete tmp_names[stat];
         }
     }
-    var col_names = [];
+    col_names = [];
     col_names.push.apply(col_names, article_deets);
     col_names.push.apply(col_names, keys(tmp_names).sort());
     
@@ -1301,8 +1317,8 @@ function output_csv(evs, path/*, callback*/) {
         var ev = evs[i];
         for (var j=0; j<col_names.length; ++j) {
             var col_name = col_names[j];
-            var cur_stat = ev.data[col_name] || ev[col_name];
-            var to_write = cur_stat ? escape_field(cur_stat) : '';
+            var cur_stat = ev[col_name] || ev.data[col_name];
+            var to_write = (cur_stat !== null && cur_stat !== undefined) ? escape_field(cur_stat) : '';
             if (is_outputtable(cur_stat)) {
                 out_file.write(to_write);
             } else {
@@ -1319,7 +1335,7 @@ function output_csv(evs, path/*, callback*/) {
 
 function get_json_output(path) {
     var fs       = require('fs');
-    var path     = path || 'output_'+(new Date()).valueOf()+'.json';
+    var path     = path || 'output_' + (new Date()).valueOf()+'.json';
     var all_ev_outputs = {};
     return function save_ev(err, ev) {
         var to_save = { article_title: ev.article_title,
@@ -1343,25 +1359,27 @@ function get_json_output(path) {
 
 function get_info_callback(real_callback) {
     return function info_callback(err, data) {
-        var get_info_failed = (err || !(data && data.query));
+        var get_info_failed = (err || !(data && data.fetch_data.query));
         if (get_info_failed) {
+            logger.error(data);
             logger.info('error getting article info. maybe timed out?');
             return;
         }
-        var page_ids = keys(data.query.pages),
-            pages    = data.query.pages;
+        var page_ids = keys(data.fetch_data.query.pages),
+            pages    = data.fetch_data.query.pages;
         
         if (page_ids.length === 0) {
-            logger.info('No article with title '+ article_title + ' found.');
+            logger.info('No article with title ' + article_title + ' found.');
             return;
         }
         var article_id    = page_ids[0],
-            article_title = pages[article_id].title.replace(' ', '_'),
+            article_title = pages[article_id].title.replace(/ /g, '_'),
             rev_id        = pages[article_id].revisions[0].revid,
             prev_rev_id   = pages[article_id].revisions[0].parentid;
-        real_callback(null, {article_title: article_title,
+        real_callback(null,{results: {article_title: article_title,
                              article_id: article_id,
-                             rev_id: rev_id});
+                             rev_id: rev_id}
+                         });
     };
 };
 
@@ -1377,7 +1395,7 @@ function evaluate_article_node(article_title, article_id, rev_id, eval_callback)
                 // first order of business, wrap in processing function
                 info_callback = get_info_callback(info_callback);
                 var info_input = input('get_article_info',
-                                       web_source('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles='+article_title+'&rvprop=ids&redirects=true&format=json')
+                                       web_source('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=' + article_title+'&rvprop=ids&redirects=true&format=json')
                                        );
                 mq.enqueue(info_input, info_callback);
             } else {
