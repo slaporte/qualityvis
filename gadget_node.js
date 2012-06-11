@@ -465,8 +465,9 @@ var make_evaluator = function(dom, rewards, callback, mq) {
     self.article_title = article_title = dom.mw.config.get('wgTitle');
     self.article_id    = article_id    = dom.mw.config.get('wgArticleId');
     self.revision_id   = revision_id   = dom.mw.config.get('wgCurRevisionId');
+    self.eval_date     = new Date();
     self.dom           = dom; // TODO rename to document for internal use?
-    self.rewards = rewards;
+    self.rewards       = rewards;
     
     self.data    = {};
     self.results = null;
@@ -538,7 +539,9 @@ var make_evaluator = function(dom, rewards, callback, mq) {
     self.to_dict = function to_dict() {
         var ret = { article_title: self.article_title,
                     article_id:    self.article_id,
-                    revision_id:   self.revision_id };
+                    revision_id:   self.revision_id,
+		    eval_date:     self.eval_date.toString(),
+		  };
         for ( stat in self.data ) {
             if (self.data[stat] !== null && is_outputtable(self.data[stat])) {
                 ret[stat] = self.data[stat];
@@ -1179,8 +1182,7 @@ var ProgressManager = function ProgressManager(bar_names) {
 
 function zero_fill(number, width) {
     width -= number.toString().length;
-    if ( width > 0 )
-    {
+    if ( width > 0 ) {
 	return new Array( width + (/\./.test( number ) ? 2 : 1) ).join( '0' ) + number;
     }
     return number + ""; // always return a string
@@ -1193,14 +1195,17 @@ function zero_fill(number, width) {
 function generate_filename(cat_name, expected_count, start_time, extension) {
     var path_lib = require('path');
     cat_name = cat_name.replace('Category:', '');
-    var prefix = cat_name + '_' + expected_count + '_' + start_time.getFullYear() +''+ (start_time.getMonth()+1) +''+ start_time.getDate();
+    var prefix = 'qv_' + cat_name + '_' + zero_fill(expected_count, 4) 
+	+ '_' + start_time.getFullYear()
+	+ ''  + zero_fill((start_time.getMonth()+1),2) 
+	+ ''  + zero_fill(start_time.getDate(), 2);
     var filename = prefix + extension;
     if (path_lib.existsSync(filename)) {
 	var suffix;
 	for (var i=2; i<100; ++i) {
-	    suffix = zero_fill(i,3);
+	    suffix = zero_fill(i,2);
 	    if (!path_lib.existsSync(prefix+suffix+extension)) {
-		filename = prefix + suffix + extension;
+		filename = prefix + '_' + suffix + extension;
 		break;
 	    }
 	}
@@ -1327,7 +1332,7 @@ function is_outputtable(val) {
 }
 
 var begin_attrs = ['article_title', 'article_id', 'revision_id'];
-var end_attrs = ['assessment']
+var end_attrs = ['eval_date', 'assessment']
 function output_csv(evaluators, path) {
     path = path || 'output_' + (new Date()).valueOf() + '.csv';
     var evs = [];
