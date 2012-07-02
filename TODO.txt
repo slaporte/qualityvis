@@ -4,3 +4,74 @@
 * Better logging
 * UTF-8 CSV bullllcrap
 * Incremental JSON output
+
+==Scientific, methodic thoughts==
+
+Because the data is so broad and re-interpretable, it's important to be explicit about axioms/assumptions and 
+start from facts, or, when not available, points of most common belief. Here is a hierarchy/gradient of 
+generality of acceptance ("generally-accepted" as in GAAP):
+
+* Featured articles on the main page
+** Possibly also Wikipedia 1.0, though that also makes slightly different assertions about article importance.
+* FA-class (featured article class) articles that use the Template:ArticleHistory template
+* FA-class articles because they generally are explicit about their processes
+* Other/all assessment levels
+
+Other candidate classes eligible for axiomatic ranking:
+
+* In the news articles
+* "Did you know..." articles
+* Peer-reviewed articles
+
+All of the above are to varying tempered by time/revision distance. Time because standards change over time, 
+and revision distance because content can change dramatically.
+
+Revision velocity (etc.) can of course also be indicators of positive quality, but those need to be explicitly 
+included/calculated into the score.
+
+Good information quality:
+ * Unbiased
+ * Well-structured (includes good summary lead and overall length considerations)
+ * Generally-accepted
+ * Cited
+ * Appropriately media-diverse
+ * Well-integrated into the rest of Wikipedia
+
+Our definition does not entail that the information be accurate, complete, current, or authoritative. 
+It also does not entail that the information is important/significant. Measuring these factors is
+fraught with complication, or not possible at all. At best we can provide insights and proxies for people
+to draw their own conclusions.
+
+Overall we are aligning our approach with as scientific and mathematical of a method as possible. We start
+from as uncontentious of an axiom/axiom set as possible, then work outwards into more murky territory, one
+hypothesis confirmation at a time. Full disclosure.
+
+===Approach 1.0: The Orbison Method===
+Address the hypotheses below to move on to successive stages:
+====Stage 1====
+New Axiom: Main Page Featured Articles are good examples of articles with high information quality.
+
+Hypothesis: It is possible to predict FA-class articles based on metrics collected from Main Page Featured Articles.
+
+Motivation: Establish that there exist quanitifiable characteristics indicative of high information quality. These
+characteristics are used to create the predictor that confirms the above hypothesis.
+
+====Stage 2====
+New Axiom: Information Quality is modeled as a continuous scale, with Featured Articles at the high end. Our predictor
+meaningfully places articles on this scale, relative to Main Page Featured Articles. We assert that the opposite extreme
+of the scale represents low Information Quality.
+
+Partially-supportable hypotheses:
+ 1. Candidates for deletion receive low scores. (needs wikification and deadend articles, too)
+ 2. Recently-assessed stub-class and start-class articles receive low scores. 
+ 3. The predictor generally aligns with the article assessment system, with few user-confirmed instances of major
+misclassifications (e.g., predicting a C-class for an FA-class article)
+
+Experiment design note: For #3, I would propose a system by which these transpositions are detected and presented for
+users to decide which classification was more correct. E.g., if the predictor guesses B-class, but the article is
+assessed as a Start-class, the article goes into a queue for user review. Users are presented with the article content
+and must decide, without knowing the source of the classification, which rank is more correct.
+
+Motivation: Confirmation of these hypotheses does not represent a definitive conclusion that the predictor is correct,
+but may result in increased credibility for the prediction system, as well as article assessments themselves. That said,
+the validity of the predictor is not strictly tied to the assessment system.
