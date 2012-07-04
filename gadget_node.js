@@ -978,10 +978,19 @@ function prepare_window_node(err, kwargs, callback) {
 }
 
 // This is a lower-level function, you probably want to use get_category()
-function get_category_members(cat_name, limit, get_cm_callback, continue_str, results_so_far) {
-    var url = 'http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers&gcmtitle=' 
+function get_members(cat_name, ns, limit, get_cm_callback, continue_str, results_so_far) {
+    if(ns === 14) {
+        var url_p_generator = 'categorymembers';
+        var url_p_title = 'gcmtitle';
+        var url_p_continue = 'gcmlimit';
+    } else if(ns === 10) {
+        var url_p_generator = 'embeddedin';
+        var url_p_title = 'geititle';
+        var url_p_continue = 'geilimit';
+    }
+    var url = 'http://en.wikipedia.org/w/api.php?action=query&generator=' + url_p_generator + '&' + url_p_title + '=' 
                + encodeURIComponent(cat_name)
-               + '&prop=info&gcmlimit=' 
+               + '&prop=info&' + url_p_continue + '=' 
                + encodeURIComponent(limit) + '&format=json';
     if(continue_str) {
         url += '&gcmcontinue='+continue_str;
@@ -1000,6 +1009,7 @@ function get_category_members(cat_name, limit, get_cm_callback, continue_str, re
             pages = data.query.pages;
         } catch (e) {
             pages = {};
+            console.log(data)
             logger.error('Error finding pages in query results.');
         }
 
@@ -1017,7 +1027,7 @@ function get_category_members(cat_name, limit, get_cm_callback, continue_str, re
         if (!cont_str || results_so_far.length >= limit) {
             get_cm_callback(null, results_so_far);
         } else {
-            get_category_members(cat_name, limit, get_cm_callback, cont_str, results_so_far);
+            get_members(cat_name, ns, limit, get_cm_callback, cont_str, results_so_far);
         }
     }
     do_query(url, cat_results_callback);
@@ -1025,7 +1035,7 @@ function get_category_members(cat_name, limit, get_cm_callback, continue_str, re
 
 function get_cm_factory(name, limit) {
     return (function(queue_callback, retry) {
-                get_category_members(name, limit, queue_callback);
+                get_members(name, 14, limit, queue_callback);
             });
 }
 
