@@ -4,7 +4,6 @@ from gevent import monkey
 monkey.patch_all()
 
 import time
-import random
 import re
 import itertools
 import requests
@@ -16,9 +15,9 @@ from functools import partial
 from progress import ProgressMeter
 
 API_URL = "http://en.wikipedia.org/w/api.php"
-DEFAULT_CONC  = 100
+DEFAULT_CONC     = 100
 DEFAULT_PER_CALL = 4
-DEFAULT_TIMEOUT = 30
+DEFAULT_TIMEOUT  = 30
 
 
 class WikiException(Exception): pass
@@ -154,8 +153,8 @@ def get_articles(page_ids=None, titles=None,
             if not page.get('pageid') or not page.get('title'):
                 continue
             title = page['title']
-            pa = Page( title  = title,
-                       req_title  = redirects.get(title, title),
+            pa = Page( title = title,
+                       req_title = redirects.get(title, title),
                        namespace = page['ns'],
                        page_id = page['pageid'],
                        rev_id = page['revisions'][0]['revid'],
@@ -167,7 +166,7 @@ def get_articles(page_ids=None, titles=None,
     return ret
 
 
-def get_incoming_links(title, **kwargs):
+def get_backlinks(title, **kwargs):
     params = {'list': 'backlinks',
               'bltitle': title,
               'bllimit': 500,  # TODO
@@ -175,6 +174,15 @@ def get_incoming_links(title, **kwargs):
               }
 
     return api_req('query', params).results['query']['backlinks']
+
+
+def get_feedback_stats(title, page_id, **kwargs):
+    params = {'list': 'articlefeedback',
+              'afpageid': page_id
+              }
+    # no ratings entry in the json means there are no ratings. if any of the other keys are missing
+    # that's an error.
+    return api_req('query', params).results['query']['articlefeedback'][0].get('ratings', [])
 
 
 def chunked_pimap(func, iterable, concurrency=DEFAULT_CONC, chunk_size=DEFAULT_PER_CALL, **kwargs):

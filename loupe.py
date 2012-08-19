@@ -8,14 +8,15 @@ import realgar
 DEFAULT_CAT = "Featured articles that have appeared on the main page"
 DEFAULT_LIMIT = 100
 DEFAULT_CONC  = 100
-DEFAULT_PER_CALL = 1 # TODO: make a configurable dictionary of chunk sizes
+DEFAULT_PER_CALL = 1  # TODO: make a configurable dictionary of chunk sizes
 DEFAULT_TIMEOUT = 30
 ALL = 20000
 
-#from inputs import dom_stats, grokse_stats
+from inputs.backlinks import Backlinks
+from inputs.feedback import FeedbackV4
+from inputs.dom import DOM
+DEFAULT_INPUTS = [Backlinks, FeedbackV4, DOM]
 
-#DEFAULT_INPUTS = [dom_stats, grokse_stats]
-DEFAULT_INPUTS = []
 """
 limits = {inputs.grokseStats: 5}
 
@@ -30,66 +31,6 @@ class FancyInputPool(object):
         self.req_multi[type(grn)].start(grn)
 """
 
-
-class Input(object):
-    source = None
-
-    @classmethod
-    def fetch(cls, title, rev_id, page_id, dom):
-        return cls.source(title, rev_id, page_id, dom)
-
-    @classmethod
-    def process(cls, fetch_results):
-        ret = {}
-        for k, func in cls.stats.items():
-            try:
-                if fetch_results:
-                    res = func(fetch_results)
-                else:
-                    res = None
-            except Exception as e:
-                ret[k] = e
-            else:
-                ret[k] = res
-        return ret
-
-
-class IncomingLinks(Input):
-    fetch = realgar.get_incoming_links
-    fetch = staticmethod(fetch)
-
-    stats = {
-        'incoming_links': lambda f_res: len(f_res),
-    }
-
-
-def get_feedback_stats(title, page_id, **kwargs):
-    params = {'list': 'articlefeedback',
-              'afpageid': page_id
-              }
-    # no ratings entry in the json means there are no ratings. if any of the other keys are missing
-    # that's an error.
-    return realgar.api_req('query', params).results['query']['articlefeedback'][0].get('ratings', [])
-
-
-class FeedbackV4(Input):
-    fetch = get_feedback_stats
-    fetch = staticmethod(fetch)
-
-    stats = {
-        'fb_trustworthy': lambda f: f[0]['total'] / f[0]['count'] if f[0]['count'] else 0,
-        'fb_objective': lambda f: f[1]['total'] / f[1]['count'] if f[1]['count'] else 0,
-        'fb_complete': lambda f: f[2]['total'] / f[2]['count'] if f[2]['count'] else 0,
-        'fb_wellwritten': lambda f: f[3]['total'] / f[3]['count'] if f[3]['count'] else 0,
-        'fb_count_trustworthy': lambda f: f[0]['count'],
-        'fb_count_objective': lambda f: f[1]['count'],
-        'fb_count_complete': lambda f: f[2]['count'],
-        'fb_count_wellwritten': lambda f: f[3]['count'],
-        'fb_count_total': lambda f: sum([x['count'] for x in f]),
-        'fb_countall_total': lambda f: sum([x['countall'] for x in f])
-    }
-
-DEFAULT_INPUTS = [IncomingLinks, FeedbackV4]
 
 class ArticleLoupe(object):
     """
