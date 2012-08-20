@@ -20,7 +20,6 @@ class DOM(Input):
 
     stats = {
         'word_count':       lambda f: len(f('p').text().split()),
-        'paragraph_count':  lambda f: len(f('p')),
         'p_dist':           lambda f: dist_stats(paragraph_counts(f)),
         'reference_count':  lambda f: len(f('.reference')),
         'source_count':     lambda f: len(f('li[id^="cite_note"]')),
@@ -33,7 +32,7 @@ class DOM(Input):
         'external_links_in_section': lambda f: len(f('#External_links').parent().nextAll('ul').children()),
         'see_also_links_in_section': lambda f: len(f('#See_also').parent().nextAll('ul').children()),
         'external_links_total_count': lambda f: len(f('.external')),
-        'links_count':      lambda f: [text.text_content() for text in f('p a:not([class])[href^="/wiki/"]')],
+        'links_count':      lambda f: len([text.text_content() for text in f('p a:not([class])[href^="/wiki/"]')]),
         'dom_internal_link_count': lambda f: len(f('p a:not([class])[href^="/wiki/"]')),
         'ref_needed_count': lambda f: len(f('span:contains("citation")')),
         'pov_statement_count': lambda f: len(f('span:contains("neutrality")')),
