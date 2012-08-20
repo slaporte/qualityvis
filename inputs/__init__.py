@@ -23,6 +23,30 @@ class Input(object):
         return ret
 
 
+def list_stats(prefix, func):
+    from stats import mean, median, variance, std_dev, rel_std_dev, skewness, kurtosis
+    stats = {
+        'mean': lambda vals: mean(vals),
+        'median':   lambda vals: median(vals),
+        'variance': lambda vals: variance(vals),
+        'std_dev':  lambda vals: std_dev(vals),
+        'rel_std_dev':  lambda vals: rel_std_dev(vals),
+        'skewness': lambda vals: skewness(vals),
+        'kurtosis': lambda vals: kurtosis(vals),
+        'size': lambda vals: len(vals)
+    } 
+
+    ret = {}
+    def get_stats_func(name, func):
+        return lambda x: stats[name](func(x))
+
+    for k, stats_func in stats.items():
+        ret[str(prefix)+'_'+str(k)] = get_stats_func(k, func)
+
+    return ret
+
+
+
 def get_url(url, params=None, raise_exc=True):
     import requests
     if params is None:
