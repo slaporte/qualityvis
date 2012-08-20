@@ -50,6 +50,7 @@ class ArticleLoupe(object):
                          page_id = self.page_id,
                          rev_id  = self.rev_id,
                          text    = self.text) for i in input_classes]
+        self.input_pool = gevent.pool.Pool()
         self.results = {}
         self.fetch_results = {}
 
@@ -57,13 +58,13 @@ class ArticleLoupe(object):
 
     def process_inputs(self):
         for i in self.inputs:
-            gevent.spawn(i).link(self._comp_hook)
+            self.input_pool.spawn(i).link(self._comp_hook)
+        self.input_pool.join()
+        return self
 
     def _comp_hook(self, grnlt, **kwargs):
         self._comp_inputs_count += 1
         self.results.update(grnlt.value)
-        if self.is_complete:
-            print 'loupe created for', self.title, 'took', time.time() - self.page.fetch_date, 'seconds'
 
     @property
     def is_complete(self):
@@ -95,18 +96,29 @@ def flatten_dict(root, prefix_keys=True):
 def evaluate_category(category, limit, **kwargs):
     cat_mems = realgar.get_category(category, count=limit)
     cat_titles = [cm.title[5:] for cm in cat_mems if cm.title.startswith("Talk:")]
-    loupes = []
+    loupes = []  # NOTE: only used in debug mode, uses a lot more ram
+    results = []
     loupe_pool = gevent.pool.Pool(30)
     pages = realgar.chunked_pimap(realgar.get_articles_by_title,
                                   cat_titles,
                                   kwargs.get('concurrency', DEFAULT_CONC),
                                   kwargs.get('grouping', DEFAULT_PER_CALL))
+
+    def loupe_on_complete(grnlt):
+        loupe = grnlt.value
+        print 'loupe created for', loupe.title, 'took', time.time() - loupe.page.fetch_date, 'seconds'
+        if kwargs.get('debug'):
+            loupes.append(loupe)
+        results.append(loupe.results)
+
     for p in chain.from_iterable(pages):
         al = ArticleLoupe(p)
-        loupes.append(al)
-        loupe_pool.spawn(al.process_inputs)
+        #loupes.append(al)
+        loupe_pool.spawn(al.process_inputs).link(loupe_on_complete)
     loupe_pool.join()
-    import pdb;pdb.set_trace()
+
+    if kwargs.get('debug'):
+        import pdb;pdb.set_trace()
 
 # check for errors:
 # [al.title for al in loupes if any([isinstance(r, Exception) for r in al.results.values()])]
