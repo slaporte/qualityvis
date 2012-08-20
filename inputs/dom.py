@@ -1,15 +1,17 @@
-from . import Input, list_stats
+from . import Input
 from pyquery import PyQuery
+
+from stats import dist_stats
 
 
 def word_count(element):
     return len(element.text_content().split())
 
+
 def paragraph_counts(pq):
-    try:
-        return [word_count(x) for x in pq('p') if word_count(x) > 0]
-    except Exception as e:
-        import pdb;pdb.set_trace()
+    wcs = [word_count(x) for x in pq('p')]
+    return [x for x in wcs if x > 0]
+
 
 class DOM(Input):
     @staticmethod
@@ -19,6 +21,7 @@ class DOM(Input):
     stats = {
         'word_count':       lambda f: len(f('p').text().split()),
         'paragraph_count':  lambda f: len(f('p')),
+        'p_dist':           lambda f: dist_stats(paragraph_counts(f)),
         'reference_count':  lambda f: len(f('.reference')),
         'source_count':     lambda f: len(f('li[id^="cite_note"]')),
         'reference_section_count': lambda f: len(f('#References')),
@@ -79,4 +82,3 @@ class DOM(Input):
         'templ_wikify': lambda f: len(f('.ambox-Wikify')),
         'templ_multiple_issues': lambda f: len(f('.ambox-multiple_issues li'))
     }
-    stats.update(list_stats('p_count', paragraph_counts))

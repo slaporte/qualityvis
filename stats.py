@@ -38,7 +38,7 @@ def kurtosis(vals):
             ((len(vals) - 1) * (std_dev(vals) ** 4)))
 
 
-def num_stats(vals):
+def dist_stats(vals):
     return {
         'mean':     mean(vals),
         'median':   median(vals),
