@@ -79,6 +79,27 @@ class ArticleLoupe(object):
     def is_complete(self):
         return len(self.results) == sum([len(i.stats) for i in self.inputs])
 
+    def get_flat_results(self):
+        return flatten_dict(self.results)
+
+
+def flatten_dict(root, prefix_keys=True):
+    dicts = [([], root)]
+    ret = {}
+    seen = set()
+    for path, d in dicts:
+        if id(d) in seen:
+            continue
+        seen.add(id(d))
+        for k, v in d.items():
+            new_path = path + [k]
+            prefix = '_'.join(new_path) if prefix_keys else k
+            if hasattr(v, 'items'):
+                dicts.append((new_path, v))
+            else:
+                ret[prefix] = v
+    return ret
+
 
 def evaluate_category(category, limit, **kwargs):
     cat_mems = realgar.get_category(category, count=limit)
