@@ -49,11 +49,14 @@ class ArticleLoupe(object):
         self.results = {}
         self.fetch_results = {}
 
+        self._comp_inputs_count = 0
+
     def process_inputs(self):
         for i in self.inputs:
             gevent.spawn(self.process_one_input, i).link(self._comp_hook)
 
     def _comp_hook(self, *args, **kwargs):
+        self._comp_inputs_count += 1
         if self.is_complete:
             print 'loupe created for', self.title, 'took', time.time() - self.page.fetch_date, 'seconds'
 
@@ -77,7 +80,8 @@ class ArticleLoupe(object):
 
     @property
     def is_complete(self):
-        return len(self.results) == sum([len(i.stats) for i in self.inputs])
+        #return len(self.results) == sum([len(i.stats) for i in self.inputs])
+        return len(self.inputs) == self._comp_inputs_count
 
     def get_flat_results(self):
         return flatten_dict(self.results)
@@ -103,7 +107,6 @@ def flatten_dict(root, prefix_keys=True):
 
 def evaluate_category(category, limit, **kwargs):
     cat_mems = realgar.get_category(category, count=limit)
-
     cat_titles = [cm.title[5:] for cm in cat_mems if cm.title.startswith("Talk:")]
     loupes = []
     loupe_pool = gevent.pool.Pool(30)
@@ -115,7 +118,7 @@ def evaluate_category(category, limit, **kwargs):
         al = ArticleLoupe(p)
         loupes.append(al)
         loupe_pool.spawn(al.process_inputs)
-
+    loupe_pool.join()
     import pdb;pdb.set_trace()
 
 # check for errors:
