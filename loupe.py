@@ -38,14 +38,18 @@ class ArticleLoupe(object):
     2. Run inputs, checking for loupe completeness
     3. Serialize/complete.
     """
-    def __init__(self, page, inputs=None):
+    def __init__(self, page, input_classes=None):
         self.title = page.title
         self.page_id = page.page_id
         self.rev_id = page.rev_id
         self.text = page.rev_text
         self.page = page
-        if inputs is None:
-            self.inputs = DEFAULT_INPUTS
+        if input_classes is None:
+            input_classes = DEFAULT_INPUTS
+        self.inputs = [i(title   = self.title,
+                         page_id = self.page_id,
+                         rev_id  = self.rev_id,
+                         text    = self.text) for i in input_classes]
         self.results = {}
         self.fetch_results = {}
 
@@ -53,30 +57,13 @@ class ArticleLoupe(object):
 
     def process_inputs(self):
         for i in self.inputs:
-            gevent.spawn(self.process_one_input, i).link(self._comp_hook)
+            gevent.spawn(i).link(self._comp_hook)
 
-    def _comp_hook(self, *args, **kwargs):
+    def _comp_hook(self, grnlt, **kwargs):
         self._comp_inputs_count += 1
+        self.results.update(grnlt.value)
         if self.is_complete:
             print 'loupe created for', self.title, 'took', time.time() - self.page.fetch_date, 'seconds'
-
-    def process_one_input(self, i):
-        try:
-            self.fetch_results[i] = i.fetch(title   = self.title,
-                                            page_id = self.page_id,
-                                            rev_id  = self.rev_id,
-                                            text    = self.text)
-        except Exception as e:
-            # TODO: retry
-            print 'Fetch failed on', self.title, 'for input', i,
-            print 'with exception', repr(e)
-            return
-        proc_res = i.process(self.fetch_results[i])
-        if isinstance(proc_res, Exception):
-            print i, 'process step glubbed up on', self.title
-        else:
-            self.results.update(proc_res)
-        return
 
     @property
     def is_complete(self):

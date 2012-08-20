@@ -79,7 +79,7 @@ def api_req(action, params=None, raise_exc=True, **kwargs):
 def get_category(cat_name, count=500, cont_str=""):
     ret = []
     if not cat_name.startswith('Category:'):
-        cat_name = 'Category:'+cat_name
+        cat_name = 'Category:' + cat_name
     while len(ret) < count and cont_str is not None:
         cur_count = min(count - len(ret), 500)
         params = {'list':       'categorymembers',
@@ -91,11 +91,11 @@ def get_category(cat_name, count=500, cont_str=""):
         try:
             qres = resp.results['query']
         except:
-            print resp.error # log
+            print resp.error  # log
             raise
-        ret.extend([ CategoryMember(page_id=cm['pageid'],
-                                    ns    =cm['ns'],
-                                    title =cm['title'])
+        ret.extend([CategoryMember(page_id=cm['pageid'],
+                                   ns     =cm['ns'],
+                                   title  =cm['title'])
                      for cm in qres['categorymembers']
                      if cm.get('pageid') ])
         try:
@@ -176,7 +176,7 @@ def get_backlinks(title, **kwargs):
     return api_req('query', params).results['query']['backlinks']
 
 
-def get_feedback_stats(title, page_id, **kwargs):
+def get_feedback_stats(page_id, **kwargs):
     params = {'list': 'articlefeedback',
               'afpageid': page_id
               }

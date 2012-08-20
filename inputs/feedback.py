@@ -2,8 +2,9 @@ import realgar
 from . import Input
 
 class FeedbackV4(Input):
-    fetch = realgar.get_feedback_stats
-    fetch = staticmethod(fetch)
+    def fetch(self):
+        return realgar.get_feedback_stats(page_id = self.page_id)
+
 
     stats = {
         'fb_trustworthy': lambda f: f[0]['total'] / f[0]['count'] if f[0]['count'] else 0,

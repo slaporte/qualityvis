@@ -14,9 +14,8 @@ def paragraph_counts(pq):
 
 
 class DOM(Input):
-    @staticmethod
-    def fetch(title, rev_id, page_id, text):
-        return PyQuery(text)
+    def fetch(self):
+        return PyQuery(self.text)
 
     stats = {
         'word_count':       lambda f: len(f('p').text().split()),

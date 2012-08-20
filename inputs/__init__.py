@@ -1,16 +1,23 @@
 
 
 class Input(object):
-    source = None
 
-    @classmethod
-    def fetch(cls, title, rev_id, page_id, dom):
-        return cls.source(title, rev_id, page_id, dom)
+    def __init__(self, title, page_id, rev_id, text):
+        self.page_title = title
+        self.page_id    = page_id
+        self.rev_id     = rev_id
+        self.text       = text
 
-    @classmethod
-    def process(cls, fetch_results):
+        self.attempts = 0
+        self.fetch_results = None
+        self.results = None
+
+    def fetch(self):
+        raise NotImplemented  # TODO: convert to abstract class?
+
+    def process(self, fetch_results):
         ret = {}
-        for k, func in cls.stats.items():
+        for k, func in self.stats.items():
             try:
                 if fetch_results:
                     res = func(fetch_results)
@@ -21,6 +28,19 @@ class Input(object):
             else:
                 ret[k] = res
         return ret
+
+    def __call__(self):
+        try:
+            self.fetch_results = self.fetch()
+        except Exception as e:
+            # TODO: retry
+            print 'Fetch failed on', self.page_title, 'for input', type(self),
+            print 'with exception', repr(e)
+            return
+        proc_res = self.process(self.fetch_results)
+        if isinstance(proc_res, Exception):
+            print type(self), 'process step glubbed up on', self.page_title
+        return proc_res
 
 
 def get_url(url, params=None, raise_exc=True):
