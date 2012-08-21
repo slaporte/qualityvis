@@ -1,16 +1,21 @@
 
 
 class Input(object):
-    source = None
 
-    @classmethod
-    def fetch(cls, title, rev_id, page_id, dom):
-        return cls.source(title, rev_id, page_id, dom)
+    def __init__(self, title, page_id):
+        self.page_title = title
+        self.page_id    = page_id
 
-    @classmethod
-    def process(cls, fetch_results):
+        self.attempts = 0
+        self.fetch_results = None
+        self.results = None
+
+    def fetch(self):
+        raise NotImplemented  # TODO: convert to abstract class?
+
+    def process(self, fetch_results):
         ret = {}
-        for k, func in cls.stats.items():
+        for k, func in self.stats.items():
             try:
                 if fetch_results:
                     res = func(fetch_results)
@@ -22,29 +27,18 @@ class Input(object):
                 ret[k] = res
         return ret
 
-
-def list_stats(prefix, func):
-    from stats import mean, median, variance, std_dev, rel_std_dev, skewness, kurtosis
-    stats = {
-        'mean': lambda vals: mean(vals),
-        'median':   lambda vals: median(vals),
-        'variance': lambda vals: variance(vals),
-        'std_dev':  lambda vals: std_dev(vals),
-        'rel_std_dev':  lambda vals: rel_std_dev(vals),
-        'skewness': lambda vals: skewness(vals),
-        'kurtosis': lambda vals: kurtosis(vals),
-        'size': lambda vals: len(vals)
-    } 
-
-    ret = {}
-    def get_stats_func(name, func):
-        return lambda x: stats[name](func(x))
-
-    for k, stats_func in stats.items():
-        ret[str(prefix)+'_'+str(k)] = get_stats_func(k, func)
-
-    return ret
-
+    def __call__(self):
+        try:
+            self.fetch_results = self.fetch()
+        except Exception as e:
+            # TODO: retry
+            print 'Fetch failed on', self.page_title, 'for input', type(self),
+            print 'with exception', repr(e)
+            return
+        proc_res = self.process(self.fetch_results)
+        if isinstance(proc_res, Exception):
+            print type(self), 'process step glubbed up on', self.page_title
+        return proc_res
 
 
 def get_url(url, params=None, raise_exc=True):

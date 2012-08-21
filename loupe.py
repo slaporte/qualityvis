@@ -38,69 +38,80 @@ class FancyInputPool(object):
 
 
 class ArticleLoupe(object):
-    """
-    1. Get article (text + revision id + other metadata)
-    2. Run inputs, checking for loupe completeness
-    3. Serialize/complete.
-    """
-    def __init__(self, page, inputs=None):
-        self.title = page.title
-        self.page_id = page.page_id
-        self.rev_id = page.rev_id
-        self.text = page.rev_text
-        self.page = page
-        if inputs is None:
-            self.inputs = DEFAULT_INPUTS
+    def __init__(self, title, page_id, input_classes=None):
+        self.title = title
+        self.page_id = page_id
+        if input_classes is None:
+            input_classes = DEFAULT_INPUTS
+        self.inputs = [i(title   = self.title,
+                         page_id = self.page_id) for i in input_classes]
+        self.input_pool = gevent.pool.Pool()
         self.results = {}
         self.fetch_results = {}
 
+        self.start_time = time.time()  # need more fine-grained timing
+        self._comp_inputs_count = 0
+
     def process_inputs(self):
         for i in self.inputs:
-            gevent.spawn(self.process_one_input, i).link(self._comp_hook)
+            self.input_pool.spawn(i).link(self._comp_hook)
+        self.input_pool.join()
+        return self
 
-    def _comp_hook(self, *args, **kwargs):
-        if self.is_complete:
-            print 'loupe created for', self.title, 'took', time.time() - self.page.fetch_date, 'seconds'
-
-    def process_one_input(self, i):
-        try:
-            self.fetch_results[i] = i.fetch(title   = self.title,
-                                            page_id = self.page_id,
-                                            rev_id  = self.rev_id,
-                                            text    = self.text)
-        except Exception as e:
-            # TODO: retry
-            print 'Fetch failed on', self.title, 'for input', i,
-            print 'with exception', repr(e)
-            return
-        proc_res = i.process(self.fetch_results[i])
-        if isinstance(proc_res, Exception):
-            print i, 'process step glubbed up on', self.title
-        else:
-            self.results.update(proc_res)
-        return
+    def _comp_hook(self, grnlt, **kwargs):
+        self._comp_inputs_count += 1
+        self.results.update(grnlt.value)
 
     @property
     def is_complete(self):
-        return len(self.results) == sum([len(i.stats) for i in self.inputs])
+        #return len(self.results) == sum([len(i.stats) for i in self.inputs])
+        return len(self.inputs) == self._comp_inputs_count
+
+    def get_flat_results(self):
+        return flatten_dict(self.results)
+
+
+def flatten_dict(root, prefix_keys=True):
+    dicts = [([], root)]
+    ret = {}
+    seen = set()
+    for path, d in dicts:
+        if id(d) in seen:
+            continue
+        seen.add(id(d))
+        for k, v in d.items():
+            new_path = path + [k]
+            prefix = '_'.join(new_path) if prefix_keys else k
+            if hasattr(v, 'items'):
+                dicts.append((new_path, v))
+            else:
+                ret[prefix] = v
+    return ret
 
 
 def evaluate_category(category, limit, **kwargs):
-    cat_mems = realgar.get_category(category, count=limit)
+    print 'Fetching members of category', str(category)+'...'
+    cat_mems = realgar.get_category(category, count=limit, to_zero_ns=True)
+    print 'Creating Loupes for', len(cat_mems), 'articles in', str(category)+'...'
+    loupes = []  # NOTE: only used in debug mode, uses a lot more ram
+    results = []
+    loupe_pool = gevent.pool.Pool(50)
 
-    cat_titles = [cm.title[5:] for cm in cat_mems if cm.title.startswith("Talk:")]
-    loupes = []
-    loupe_pool = gevent.pool.Pool(30)
-    pages = realgar.chunked_pimap(realgar.get_articles_by_title,
-                                  cat_titles,
-                                  kwargs.get('concurrency', DEFAULT_CONC),
-                                  kwargs.get('grouping', DEFAULT_PER_CALL))
-    for p in chain.from_iterable(pages):
-        al = ArticleLoupe(p)
-        loupes.append(al)
-        loupe_pool.spawn(al.process_inputs)
+    def loupe_on_complete(grnlt):
+        loupe = grnlt.value
+        print 'loupe created for', loupe.title, 'took', time.time() - loupe.start_time, 'seconds'
+        if kwargs.get('debug'):
+            loupes.append(loupe)
+        results.append(loupe.results)
 
-    import pdb;pdb.set_trace()
+    for cm in cat_mems:
+        al = ArticleLoupe(cm.title, cm.page_id)
+        #loupes.append(al)
+        loupe_pool.spawn(al.process_inputs).link(loupe_on_complete)
+    loupe_pool.join()
+
+    if kwargs.get('debug'):
+        import pdb;pdb.set_trace()
 
 # check for errors:
 # [al.title for al in loupes if any([isinstance(r, Exception) for r in al.results.values()])]

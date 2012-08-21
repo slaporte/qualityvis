@@ -1,27 +1,31 @@
-from . import Input, list_stats
+from . import Input
+import realgar
 from pyquery import PyQuery
+
+from stats import dist_stats
 
 
 def word_count(element):
     return len(element.text_content().split())
 
+
 def paragraph_counts(pq):
-    try:
-        return [word_count(x) for x in pq('p') if word_count(x) > 0]
-    except Exception as e:
-        import pdb;pdb.set_trace()
+    wcs = [word_count(x) for x in pq('p')]
+    return [x for x in wcs if x > 0]
+
 
 def section_stats(header, pq):
     pass    
 
 class DOM(Input):
-    @staticmethod
-    def fetch(title, rev_id, page_id, text):
+    def fetch(self):
+        page = realgar.get_articles(self.page_id)[0]
+        text = page.rev_text
         return PyQuery(text)
 
     stats = {
         'word_count':       lambda f: len(f('p').text().split()),
-        'paragraph_count':  lambda f: len(f('p')),
+        'p_dist':           lambda f: dist_stats(paragraph_counts(f)),
         'reference_count':  lambda f: len(f('.reference')),
         'source_count':     lambda f: len(f('li[id^="cite_note"]')),
         'reference_section_count': lambda f: len(f('#References')),
@@ -33,7 +37,7 @@ class DOM(Input):
         'external_links_in_section': lambda f: len(f('#External_links').parent().nextAll('ul').children()),
         'see_also_links_in_section': lambda f: len(f('#See_also').parent().nextAll('ul').children()),
         'external_links_total_count': lambda f: len(f('.external')),
-        'links_count':      lambda f: [text.text_content() for text in f('p a:not([class])[href^="/wiki/"]')],
+        'links_count':      lambda f: len([text.text_content() for text in f('p a:not([class])[href^="/wiki/"]')]),
         'dom_internal_link_count': lambda f: len(f('p a:not([class])[href^="/wiki/"]')),
         'ref_needed_count': lambda f: len(f('span:contains("citation")')),
         'pov_statement_count': lambda f: len(f('span:contains("neutrality")')),
@@ -82,4 +86,3 @@ class DOM(Input):
         'templ_wikify': lambda f: len(f('.ambox-Wikify')),
         'templ_multiple_issues': lambda f: len(f('.ambox-multiple_issues li'))
     }
-    stats.update(list_stats('p_count', paragraph_counts))
