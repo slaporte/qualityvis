@@ -2,11 +2,9 @@
 
 class Input(object):
 
-    def __init__(self, title, page_id, rev_id, text):
+    def __init__(self, title, page_id):
         self.page_title = title
         self.page_id    = page_id
-        self.rev_id     = rev_id
-        self.text       = text
 
         self.attempts = 0
         self.fetch_results = None

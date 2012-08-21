@@ -1,4 +1,5 @@
 from . import Input
+import realgar
 from pyquery import PyQuery
 
 from stats import dist_stats
@@ -15,7 +16,9 @@ def paragraph_counts(pq):
 
 class DOM(Input):
     def fetch(self):
-        return PyQuery(self.text)
+        page = realgar.get_articles(self.page_id)[0]
+        text = page.rev_text
+        return PyQuery(text)
 
     stats = {
         'word_count':       lambda f: len(f('p').text().split()),

@@ -33,27 +33,18 @@ class FancyInputPool(object):
 
 
 class ArticleLoupe(object):
-    """
-    1. Get article (text + revision id + other metadata)
-    2. Run inputs, checking for loupe completeness
-    3. Serialize/complete.
-    """
-    def __init__(self, page, input_classes=None):
-        self.title = page.title
-        self.page_id = page.page_id
-        self.rev_id = page.rev_id
-        self.text = page.rev_text
-        self.page = page
+    def __init__(self, title, page_id, input_classes=None):
+        self.title = title
+        self.page_id = page_id
         if input_classes is None:
             input_classes = DEFAULT_INPUTS
         self.inputs = [i(title   = self.title,
-                         page_id = self.page_id,
-                         rev_id  = self.rev_id,
-                         text    = self.text) for i in input_classes]
+                         page_id = self.page_id) for i in input_classes]
         self.input_pool = gevent.pool.Pool()
         self.results = {}
         self.fetch_results = {}
 
+        self.start_time = time.time()  # need more fine-grained timing
         self._comp_inputs_count = 0
 
     def process_inputs(self):
@@ -94,24 +85,22 @@ def flatten_dict(root, prefix_keys=True):
 
 
 def evaluate_category(category, limit, **kwargs):
+    print 'Fetching members of category', str(category)+'...'
     cat_mems = realgar.get_category(category, count=limit, to_zero_ns=True)
+    print 'Creating Loupes for', len(cat_mems), 'articles in', str(category)+'...'
     loupes = []  # NOTE: only used in debug mode, uses a lot more ram
     results = []
-    loupe_pool = gevent.pool.Pool(30)
-    pages = realgar.chunked_pimap(realgar.get_articles,
-                                  [cm.page_id for cm in cat_mems],
-                                  kwargs.get('concurrency', DEFAULT_CONC),
-                                  kwargs.get('grouping', DEFAULT_PER_CALL))
+    loupe_pool = gevent.pool.Pool(50)
 
     def loupe_on_complete(grnlt):
         loupe = grnlt.value
-        print 'loupe created for', loupe.title, 'took', time.time() - loupe.page.fetch_date, 'seconds'
+        print 'loupe created for', loupe.title, 'took', time.time() - loupe.start_time, 'seconds'
         if kwargs.get('debug'):
             loupes.append(loupe)
         results.append(loupe.results)
 
-    for p in chain.from_iterable(pages):
-        al = ArticleLoupe(p)
+    for cm in cat_mems:
+        al = ArticleLoupe(cm.title, cm.page_id)
         #loupes.append(al)
         loupe_pool.spawn(al.process_inputs).link(loupe_on_complete)
     loupe_pool.join()
