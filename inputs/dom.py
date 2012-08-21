@@ -11,6 +11,9 @@ def paragraph_counts(pq):
     except Exception as e:
         import pdb;pdb.set_trace()
 
+def section_stats(header, pq):
+    pass    
+
 class DOM(Input):
     @staticmethod
     def fetch(title, rev_id, page_id, text):

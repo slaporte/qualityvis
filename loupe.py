@@ -15,7 +15,12 @@ ALL = 20000
 from inputs.backlinks import Backlinks
 from inputs.feedback import FeedbackV4
 from inputs.dom import DOM
-DEFAULT_INPUTS = [Backlinks, FeedbackV4, DOM]
+from inputs.google import googleNews
+from inputs.google import googleSearch
+from inputs.wikitrust import wikitrust
+from inputs.grokse import pageViews
+
+DEFAULT_INPUTS = [Backlinks, FeedbackV4, DOM, googleNews, googleSearch, wikitrust, pageViews]
 
 """
 limits = {inputs.grokseStats: 5}
