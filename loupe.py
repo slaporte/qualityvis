@@ -94,13 +94,12 @@ def flatten_dict(root, prefix_keys=True):
 
 
 def evaluate_category(category, limit, **kwargs):
-    cat_mems = realgar.get_category(category, count=limit)
-    cat_titles = [cm.title[5:] for cm in cat_mems if cm.title.startswith("Talk:")]
+    cat_mems = realgar.get_category(category, count=limit, to_zero_ns=True)
     loupes = []  # NOTE: only used in debug mode, uses a lot more ram
     results = []
     loupe_pool = gevent.pool.Pool(30)
-    pages = realgar.chunked_pimap(realgar.get_articles_by_title,
-                                  cat_titles,
+    pages = realgar.chunked_pimap(realgar.get_articles,
+                                  [cm.page_id for cm in cat_mems],
                                   kwargs.get('concurrency', DEFAULT_CONC),
                                   kwargs.get('grouping', DEFAULT_PER_CALL))
 

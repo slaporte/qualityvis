@@ -76,7 +76,7 @@ def api_req(action, params=None, raise_exc=True, **kwargs):
     return resp
 
 
-def get_category(cat_name, count=500, cont_str=""):
+def get_category_old(cat_name, count=500, cont_str=""):
     ret = []
     if not cat_name.startswith('Category:'):
         cat_name = 'Category:' + cat_name
@@ -97,7 +97,7 @@ def get_category(cat_name, count=500, cont_str=""):
                                    ns     =cm['ns'],
                                    title  =cm['title'])
                      for cm in qres['categorymembers']
-                     if cm.get('pageid') ])
+                     if cm.get('pageid')])
         try:
             cont_str = resp.results['query-continue']['categorymembers']['cmcontinue']
         except:
@@ -105,8 +105,60 @@ def get_category(cat_name, count=500, cont_str=""):
 
     return ret
 
+"""
+http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers
+&gcmtitle=Category:Featured_articles_that_have_appeared_on_the_main_page
+&prop=info&inprop=subjectid&format=json
+"""
+
+
+def get_category(cat_name, count=500, to_zero_ns=False, cont_str=""):
+    ret = []
+    if not cat_name.startswith('Category:'):
+        cat_name = 'Category:' + cat_name
+    while len(ret) < count and cont_str is not None:
+        cur_count = min(count - len(ret), 500)
+        params = {'generator': 'categorymembers',
+                  'gcmtitle':   cat_name,
+                  'prop':       'info',
+                  'inprop':     'title|pageid|ns|subjectid',
+                  'gcmlimit':    cur_count,
+                  'gcmcontinue': cont_str}
+        resp = api_req('query', params)
+        try:
+            qres = resp.results['query']
+        except:
+            print resp.error  # log
+            raise
+        for k, cm in qres['pages'].iteritems():
+            if not cm.get('pageid'):
+                continue
+            namespace = cm['ns']
+            if namespace != 0 and to_zero_ns:  # non-Main/zero namespace
+                try:
+                    _, _, title = cm['title'].partition(':')
+                    page_id = cm['subjectid']
+                    namespace = 0
+                except KeyError as e:
+                    continue  # TODO: log
+            else:
+                title = cm['title']
+                page_id = cm['pageid']
+
+            ret.append(CategoryMember(title = title,
+                                      page_id = page_id,
+                                      ns = namespace))
+        try:
+            cont_str = resp.results['query-continue']['categorymembers']['gcmcontinue']
+        except:
+            cont_str = None
+
+    return ret
+
+
 def get_articles_by_title(titles, **kwargs):
     return get_articles(titles=titles, **kwargs)
+
 
 def get_articles(page_ids=None, titles=None,
     parsed=True, follow_redirects=False, **kwargs):
