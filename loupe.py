@@ -3,7 +3,7 @@ from itertools import chain
 
 import time
 import gevent
-import realgar
+import wapiti
 
 DEFAULT_CAT = "Featured articles that have appeared on the main page"
 DEFAULT_LIMIT = 100
@@ -101,7 +101,7 @@ def flatten_dict(root, prefix_keys=True):
 
 def evaluate_category(category, limit, **kwargs):
     print 'Fetching members of category', str(category) + '...'
-    cat_mems = realgar.get_category(category, count=limit, to_zero_ns=True)
+    cat_mems = wapiti.get_category(category, count=limit, to_zero_ns=True)
     print 'Creating Loupes for', len(cat_mems), 'articles in', str(category) + '...'
     loupes = []  # NOTE: only used in debug mode, uses a lot more ram
     results = []
