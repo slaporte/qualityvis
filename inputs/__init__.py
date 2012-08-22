@@ -15,7 +15,6 @@ class Input(Greenlet):  # TODO: subclass Greenlet?
         self.attempts = 0
         self.fetch_results = None
         self.results = None
-        self._name = __name__
         super(Input, self).__init__(*args, **kwargs)
 
     def fetch(self):
