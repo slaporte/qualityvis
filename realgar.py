@@ -217,6 +217,13 @@ def get_articles(page_ids=None, titles=None,
             ret.append(pa)
     return ret
 
+def get_talk_page(title):
+    params = {'prop': 'revisions',
+              'titles': 'Talk:' + title,
+              'rvprop': 'content',
+             }
+    return api_req('query', params).results['query']['pages'].values()[0]['revisions'][0]['*']
+
 
 def get_backlinks(title, **kwargs):
     params = {'list': 'backlinks',
