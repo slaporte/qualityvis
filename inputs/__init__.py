@@ -1,14 +1,22 @@
+try:
+    from gevent.greenlet import Greenlet
+except ImportError:
+    # Do I really need this, is this much dependency on gevent ok?
+    print 'Could not import gevent, Input will subclass object'
+    Greenlet = object
 
 
-class Input(object):
+class Input(Greenlet):  # TODO: subclass Greenlet?
 
-    def __init__(self, title, page_id):
+    def __init__(self, title, page_id, *args, **kwargs):
         self.page_title = title
         self.page_id    = page_id
 
         self.attempts = 0
         self.fetch_results = None
         self.results = None
+        self._name = __name__
+        super(Input, self).__init__(*args, **kwargs)
 
     def fetch(self):
         raise NotImplemented  # TODO: convert to abstract class?
@@ -39,6 +47,8 @@ class Input(object):
         if isinstance(proc_res, Exception):
             print type(self), 'process step glubbed up on', self.page_title
         return proc_res
+
+    _run = __call__
 
 
 def get_url(url, params=None, raise_exc=True):
