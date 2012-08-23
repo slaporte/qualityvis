@@ -1,5 +1,4 @@
 from optparse import OptionParser
-from itertools import chain
 
 import time
 import gevent
@@ -27,7 +26,8 @@ DEFAULT_INPUTS = [Backlinks, FeedbackV4, DOM, GoogleNews, GoogleSearch, Wikitrus
 
 limits = {  # Backlinks: 100,
             # FeedbackV4: 100,
-          DOM: 40}
+          DOM: 40,
+          Revisions: 20}
 
 
 class FancyInputPool(gevent.pool.Pool):
@@ -46,7 +46,6 @@ class FancyInputPool(gevent.pool.Pool):
         super(FancyInputPool, self).add(grn)
         pool.add(grn)
         # print 'Added greenlet for', grn_type
-
 
 
 class ArticleLoupe(object):
