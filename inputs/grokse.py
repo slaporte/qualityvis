@@ -1,4 +1,4 @@
-import realgar
+import wapiti
 from . import Input, get_json
 from stats import dist_stats
 
@@ -12,6 +12,6 @@ class PageViews(Input):
     	return get_json('http://stats.grok.se/json/en/latest90/' + self.page_title) 
 
     stats = {
-        'daily_views': lambda f: daily_views(f),
-        'v_dist': lambda f: dist_stats( daily_views(f)),
+        'page_views': lambda f: daily_views(f),
+        'pv_dist': lambda f: dist_stats(daily_views(f)),
     }
