@@ -3,7 +3,7 @@ from itertools import chain
 
 import time
 import gevent
-import realgar
+import wapiti
 
 DEFAULT_CAT = "Featured articles that have appeared on the main page"
 DEFAULT_LIMIT = 100
@@ -24,30 +24,43 @@ from inputs.assessment import Assessment
 
 DEFAULT_INPUTS = [Backlinks, FeedbackV4, DOM, GoogleNews, GoogleSearch, Wikitrust, PageViews, Revisions, Assessment]
 
-"""
-limits = {inputs.grokseStats: 5}
+
+limits = {  # Backlinks: 100,
+            # FeedbackV4: 100,
+          DOM: 40}
 
 
-class FancyInputPool(object):
-    def __init__(self):
-        self.req_multi = {}
-        pass
-    def spawn(self, grn):
-        if not req_multi.get(type(grn)):
-            gevent.pool.Pool(limits[type(grn)])
-        self.req_multi[type(grn)].start(grn)
-"""
+class FancyInputPool(gevent.pool.Pool):
+    def __init__(self, limits, *args, **kwargs):
+        self.limits = limits if limits is not None else {}
+        self.pools = {}
+        super(FancyInputPool, self).__init__(*args, **kwargs)
+
+    def add(self, grn, *args, **kwargs):
+        grn_type = type(grn)
+        limit = self.limits.get(grn_type)
+        pool  = self.pools.get(grn_type)
+        if pool is None:
+            # print 'Creating pool for', grn_type
+            self.pools[grn_type] = pool = gevent.pool.Pool(limit)
+        super(FancyInputPool, self).add(grn)
+        pool.add(grn)
+        # print 'Added greenlet for', grn_type
+
 
 
 class ArticleLoupe(object):
-    def __init__(self, title, page_id, input_classes=None):
+    def __init__(self, title, page_id, input_classes=None, input_pool=None):
         self.title = title
         self.page_id = page_id
         if input_classes is None:
             input_classes = DEFAULT_INPUTS
         self.inputs = [i(title   = self.title,
                          page_id = self.page_id) for i in input_classes]
-        self.input_pool = gevent.pool.Pool()
+        if input_pool is None:
+            input_pool = gevent.pool.Pool()  # might as well be a set() for how we use it
+        self.input_pool = input_pool
+        self._int_input_pool = gevent.pool.Pool()
         self.results = {}
         self.fetch_results = {}
 
@@ -56,8 +69,10 @@ class ArticleLoupe(object):
 
     def process_inputs(self):
         for i in self.inputs:
-            self.input_pool.spawn(i).link(self._comp_hook)
-        self.input_pool.join()
+            i.link(self._comp_hook)
+            self._int_input_pool.add(i)
+            self.input_pool.start(i)
+        self._int_input_pool.join()
         return self
 
     def _comp_hook(self, grnlt, **kwargs):
@@ -92,9 +107,9 @@ def flatten_dict(root, prefix_keys=True):
 
 
 def evaluate_category(category, limit, **kwargs):
-    print 'Fetching members of category', str(category)+'...'
-    cat_mems = realgar.get_category(category, count=limit, to_zero_ns=True)
-    print 'Creating Loupes for', len(cat_mems), 'articles in', str(category)+'...'
+    print 'Fetching members of category', str(category) + '...'
+    cat_mems = wapiti.get_category(category, count=limit, to_zero_ns=True)
+    print 'Creating Loupes for', len(cat_mems), 'articles in', str(category) + '...'
     loupes = []  # NOTE: only used in debug mode, uses a lot more ram
     results = []
     loupe_pool = gevent.pool.Pool(50)
@@ -106,8 +121,9 @@ def evaluate_category(category, limit, **kwargs):
             loupes.append(loupe)
         results.append(loupe.results)
 
+    fancy_pool = FancyInputPool(limits)
     for cm in cat_mems:
-        al = ArticleLoupe(cm.title, cm.page_id)
+        al = ArticleLoupe(cm.title, cm.page_id, input_pool=fancy_pool)
         #loupes.append(al)
         loupe_pool.spawn(al.process_inputs).link(loupe_on_complete)
     loupe_pool.join()

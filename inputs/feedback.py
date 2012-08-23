@@ -1,9 +1,9 @@
-import realgar
+import wapiti
 from . import Input
 
 class FeedbackV4(Input):
     def fetch(self):
-        return realgar.get_feedback_stats(page_id = self.page_id)
+        return wapiti.get_feedback_stats(page_id = self.page_id)
 
 
     stats = {
