@@ -1,6 +1,7 @@
 from . import Input
 import wapiti
 from pyquery import PyQuery
+import pdb
 
 from stats import dist_stats
 
@@ -14,8 +15,23 @@ def paragraph_counts(pq):
     return [x for x in wcs if x > 0]
 
 
-def section_stats(header, pq):
-    pass    
+def section_stats(headers):
+    hs = (h for h in headers if h.text_content() != 'Contents')
+    all_headers = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7']
+    totals = []
+    for header in hs:
+        pos = header
+        needles = []
+        text = ''
+        while pos.tag not in needles:
+            text += ' ' + pos.text_content()
+            if pos.getnext():
+                pos = pos.getnext()
+                needles = all_headers
+            else:
+                break
+        totals.append((header.text_content().replace('[edit] ', ''), len(text.split())))
+    return totals
 
 class DOM(Input):
     def fetch(self):
@@ -84,5 +100,9 @@ class DOM(Input):
         'templ_uncategorized': lambda f: len(f('.ambox-uncategorized')),
         'templ_update': lambda f: len(f('.ambox-Update')),
         'templ_wikify': lambda f: len(f('.ambox-Wikify')),
-        'templ_multiple_issues': lambda f: len(f('.ambox-multiple_issues li'))
+        'templ_multiple_issues': lambda f: len(f('.ambox-multiple_issues li')),
+        'h2': lambda f: section_stats(f('h2')),
+        'h3': lambda f: section_stats(f('h3')),
+        'h4': lambda f: section_stats(f('h4')),
+        'h5': lambda f: section_stats(f('h5')),
     }
