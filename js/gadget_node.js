@@ -90,6 +90,25 @@ function values(obj) {
     return ret;
 }
 
+// max, min, mean, variance, std deviation, length
+function array_stats(a) {
+    var r = {mean: 0, variance: 0, deviation: 0, max: 0, min: Infinity, sum: 0, length: 0};
+    var t = r.length = a.length;
+    var m, s, l;
+    //for(var m, s = 0, l = t; l--; ); // one-line sum
+    for(i = 0; i < t; ++i) {
+        r.max = a[l] > r.max ? a[l] : r.max;
+        r.min = a[l] < r.min ? a[l] : r.min;
+        s += a[l];
+    }
+    r.sum = s;
+    
+    // sum of individual variances
+    for(m = r.mean = s / t, l = t, s = 0; l--; s += Math.pow(a[l] - m, 2));
+    r.deviation = Math.sqrt(r.variance = s / t); // set deviation and variance
+    return r;
+}
+
 // TODO: register/save function?
 // TODO: (possibly related to ^) record/replay
 var queue = function queue(workers, description, autostart) {
@@ -475,17 +494,18 @@ var make_evaluator = function(dom, rewards, callback, mq) {
     
     Step(function register_inputs() {
         var results_group = this.group();
+        var uri_title = encodeURIComponent(article_title);
         self.inputs  = [
-            input('inLinkStats', web_source('http://en.wikipedia.org/w/api.php?action=query&format=json&list=backlinks&bltitle=' + article_title + '&bllimit=500&blnamespace=0'), inLinkStats)
+            input('inLinkStats', web_source('http://en.wikipedia.org/w/api.php?action=query&format=json&list=backlinks&bltitle=' + uri_title + '&bllimit=500&blnamespace=0'), inLinkStats)
             ,input('feedbackStats', web_source('http://en.wikipedia.org/w/api.php?action=query&list=articlefeedback&afpageid=' + article_id + '&afuserrating=1&format=json&afanontoken=01234567890123456789012345678912'), feedbackStats)
-            ,input('searchStats', web_source('http://ajax.googleapis.com/ajax/services/search/web?v=1.0&q=' + article_title), searchStats)
-            ,input('newsStats',  web_source('http://ajax.googleapis.com/ajax/services/search/news?v=1.0&q=' + article_title), newsStats)
+            ,input('searchStats', web_source('http://ajax.googleapis.com/ajax/services/search/web?v=1.0&q=' + uri_title), searchStats)
+            ,input('newsStats',  web_source('http://ajax.googleapis.com/ajax/services/search/news?v=1.0&q=' + uri_title), newsStats)
             ,input('wikitrustStats', yql_source('select * from html where url ="http://en.collaborativetrust.com/WikiTrust/RemoteAPI?method=quality&revid=' + revision_id + '"'), wikitrustStats)
-            ,input('grokseStats', yql_source('select * from json where url ="http://stats.grok.se/json/en/latest90/' + article_title + '"'), grokseStats)
-            ,input('getAssessment', web_source('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + article_title + '&rvprop=content&redirects=true&format=json'), getAssessment)
+            ,input('grokseStats', yql_source('select * from json where url ="http://stats.grok.se/json/en/latest90/' + uri_title + '"'), grokseStats)
+            ,input('getAssessment', web_source('http://en.wikipedia.org/w/api.php?action=query&prop=revisions&titles=Talk:' + uri_title + '&rvprop=content&redirects=true&format=json'), getAssessment)
             ,input('domStats', dom, domStats)
-            //,input('bingWebStats', web_source('http://api.bing.net/json.aspx?Appid=202F17E764089C60340ACA3FBBC558453354DA76&query=' + article_title  +  '&web.count=1&news.count=1&sources=web+news'), bingWebStats)
-            ,input('revisionStats', web_source('http://ortelius.toolserver.org:8088/revisions/' + article_title), revisionStats)
+            //,input('bingWebStats', web_source('http://api.bing.net/json.aspx?Appid=202F17E764089C60340ACA3FBBC558453354DA76&query=' + uri_title  +  '&web.count=1&news.count=1&sources=web+news'), bingWebStats)
+            ,input('revisionStats', web_source('http://ortelius.toolserver.org:8088/revisions/' + uri_title), revisionStats)
         ];
         
         for(var i=0; i<self.inputs.length; ++i) {
@@ -543,9 +563,7 @@ var make_evaluator = function(dom, rewards, callback, mq) {
 		    eval_date:     self.eval_date.toString(),
 		  };
         for ( stat in self.data ) {
-            if (self.data[stat] !== null && is_outputtable(self.data[stat])) {
-                ret[stat] = self.data[stat];
-            }
+            ret[stat] = self.data[stat];
         }
         return ret;
     };
@@ -1317,8 +1335,8 @@ cli.main(function(args, options) {
     });
 });
 
-function json_to_csv(json_filename) {
-    var data = require(json_filename);
+function json_to_csv(json_filepath) {
+    var data = require(json_filepath);
 }
 
 function escape_field(val) {
@@ -1338,7 +1356,7 @@ function escape_field(val) {
 
 function is_outputtable(val) {
     var val_type = typeof val;
-    return !(val_type === 'function' || val_type === 'object' || val_type === 'undefined');
+    return !(val_type === 'function' || val_type === 'object');
 }
 
 var begin_attrs = ['article_title', 'article_id', 'revision_id'];
@@ -1415,22 +1433,23 @@ function output_csv(evaluators, path) {
     logger.info('CSV written to '+path);
 }
 
+function has_method(obj, meth_name) {
+    if (typeof obj[meth_name] === 'function') {
+	return true;
+    } else {
+	return false;
+    }
+}
+
 function get_json_output(path) {
     var fs       = require('fs');
-    var path     = path || 'output_' + (new Date()).valueOf()+'.json';
+    var path     = path; //|| 'output_' + (new Date()).valueOf()+'.json';
     var all_ev_outputs = {};
     return function save_ev(err, ev) {
-        var to_save = { article_title: ev.article_title,
-                        article_id:    ev.article_id,
-                        revision_id:   ev.revision_id };
-        for ( stat in ev.data ) {
-            if (ev.data[stat] !== null && is_outputtable(ev.data[stat])) {
-                to_save[stat] = ev.data[stat];
-            }
-        }
+        var to_save = ev.to_dict();
         
         var out_file = fs.createWriteStream(path, {'flags': 'w', 'encoding':'utf8'});
-        if (typeof out_file.setEncoding === 'function') {
+        if ( has_method(out_file, 'setEncoding') ) { 
             out_file.setEncoding('utf8');
         }
         all_ev_outputs[ev.article_title] = to_save;
