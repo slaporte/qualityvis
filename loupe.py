@@ -23,19 +23,18 @@ limits = {  # Backlinks: 100,
 class FancyInputPool(gevent.pool.Pool):
     def __init__(self, limits, *args, **kwargs):
         self.limits = limits if limits is not None else {}
-        self.pools = {}
+        self.pools = {}  # will be lazily initialized in add()
         super(FancyInputPool, self).__init__(*args, **kwargs)
 
     def add(self, grn, *args, **kwargs):
-        grn_type = type(grn)
-        limit = self.limits.get(grn_type)
-        pool  = self.pools.get(grn_type)
-        if pool is None:
-            # print 'Creating pool for', grn_type
-            self.pools[grn_type] = pool = gevent.pool.Pool(limit)
         super(FancyInputPool, self).add(grn)
-        pool.add(grn)
-        # print 'Added greenlet for', grn_type
+        for in_type, limit in self.limits.iteritems():
+            if isinstance(grn, in_type):
+                pool = self.pools.get(in_type)
+                if pool is None:
+                    self.pools[in_type] = pool = gevent.pool.Pool(limit)
+                pool.add(grn)
+        return
 
 
 class ArticleLoupe(object):
@@ -53,7 +52,8 @@ class ArticleLoupe(object):
         self.results = {}
         self.fetch_results = {}
 
-        self.start_time = time.time()  # need more fine-grained timing
+        self.times = {}
+        self.times['create'] = time.time()
         self._comp_inputs_count = 0
 
     def process_inputs(self):
@@ -67,6 +67,8 @@ class ArticleLoupe(object):
     def _comp_hook(self, grnlt, **kwargs):
         self._comp_inputs_count += 1
         self.results.update(grnlt.results)
+        if self.is_complete:
+            self.times['complete'] = time.time()
 
     @property
     def is_complete(self):
