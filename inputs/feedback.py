@@ -1,10 +1,9 @@
 import wapiti
-from . import Input
+from base import Input
 
 class FeedbackV4(Input):
     def fetch(self):
         return wapiti.get_feedback_stats(page_id = self.page_id)
-
 
     stats = {
         'fb_trustworthy': lambda f: f[0]['total'] / f[0]['count'] if f[0]['count'] else 0,

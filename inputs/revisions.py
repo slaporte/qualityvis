@@ -1,5 +1,4 @@
-import wapiti
-from . import Input, get_json
+from base import Input, get_json
 from stats import dist_stats
 from datetime import timedelta, datetime
 
@@ -10,7 +9,7 @@ def revision_calc(revisions):
     return {
         'count':    len(revisions),
         'minor_count':  int(sum([rev['rev_minor_edit'] for rev in revisions])),
-        'byte_count': '', # TODO
+        'byte_count': '',  # TODO
         'IP_edit_count':  len([rev for rev in revisions if rev['rev_user'] == 0]),
         'revert_estimate':  len([rev for rev in revisions if 'revert' in rev['rev_comment'].lower()]),
         'most_recent_edit_date': str(parse_date_string(revisions[-1]['rev_timestamp'])),
@@ -23,7 +22,7 @@ def revision_calc(revisions):
 
 class Revisions(Input):
     def fetch(self):
-        return get_json('http://ortelius.toolserver.org:8089/all/?title=' + self.page_title.replace(' ', '_')) 
+        return get_json('http://ortelius.toolserver.org:8089/all/?title=' + self.page_title.replace(' ', '_'))
 
     stats = {
         'article_revs': lambda f: revision_calc(f['article']),

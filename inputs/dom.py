@@ -1,7 +1,6 @@
-from . import Input
+from base import Input
 import wapiti
 from pyquery import PyQuery
-import pdb
 
 from stats import dist_stats
 

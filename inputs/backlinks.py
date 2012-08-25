@@ -1,6 +1,5 @@
 import wapiti
-from . import Input
-
+from base import Input
 
 class Backlinks(Input):
     def fetch(self):

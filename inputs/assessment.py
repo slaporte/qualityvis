@@ -1,7 +1,6 @@
 import wapiti
 import re
-from . import Input
-import pdb
+from base import Input
 
 def find_tmpl(text):
     ratings = re.findall(r'\|\s*((class|currentstatus)\s*=\s*(.+?))(\b|\|)', text, re.I)
