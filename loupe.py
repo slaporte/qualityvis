@@ -114,8 +114,8 @@ def evaluate_category(category, limit, **kwargs):
                   'co_i': len(results),
                   'count': len(cat_mems),
                   'title': loupe.title,
-                  'dur': time.time() - loupe.start_time}
-        log_msg = u'#{co_i}/{count} (#{cr_i}) "{title}" took {dur} seconds'.format(**kwargs)
+                  'dur': time.time() - loupe.times['create']}
+        log_msg = u'#{co_i}/{count} (#{cr_i}) "{title}" took {dur:.4f} seconds'.format(**kwargs)
         print log_msg
         if kwargs.get('debug'):
             loupes.append(loupe)
