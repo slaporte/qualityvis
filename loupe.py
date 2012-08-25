@@ -123,7 +123,6 @@ def evaluate_category(category, limit, **kwargs):
     fancy_pool = FancyInputPool(limits)
     for cm in cat_mems:
         al = ArticleLoupe(cm.title, cm.page_id, input_pool=fancy_pool)
-        #loupes.append(al)
         loupe_pool.spawn(al.process_inputs).link(loupe_on_complete)
     loupe_pool.join()
 

@@ -1,17 +1,20 @@
-from bottle import route, run, template, redirect, request
+import bottle
+from bottle import route, run
 from datetime import datetime
 import os
 import oursql
-#import jsonp_bottle
 
 # TODO: timestamp
+from bottle_compressor import CompressorPlugin
+compressor_plugin = CompressorPlugin()
+bottle.install(compressor_plugin)
 
 
 def parse_date_string(stamp):
     return datetime.strptime(stamp, '%Y%m%d%H%M%S')
 
 
-class ArticleHistory:
+class ArticleHistory(object):
     '''article history object'''
     def __init__(self, title, namespace=0):
         db = oursql.connect(db='enwiki_p',
