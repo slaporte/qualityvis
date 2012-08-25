@@ -23,7 +23,7 @@ def revision_calc(revisions):
 
 class Revisions(Input):
     def fetch(self):
-        return get_json('http://ortelius.toolserver.org:8089/all/' + self.page_title.replace(' ', '_')) 
+        return get_json('http://ortelius.toolserver.org:8089/all/?title=' + self.page_title.replace(' ', '_')) 
 
     stats = {
         'article_revs': lambda f: revision_calc(f['article']),

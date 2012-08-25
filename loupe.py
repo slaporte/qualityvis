@@ -27,7 +27,8 @@ DEFAULT_INPUTS = [Backlinks, FeedbackV4, DOM, GoogleNews, GoogleSearch, Wikitrus
 limits = {  # Backlinks: 100,
             # FeedbackV4: 100,
           DOM: 40,
-          Revisions: 20}
+          Revisions: 20,
+          Assessment: 20}
 
 
 class FancyInputPool(gevent.pool.Pool):
@@ -111,7 +112,7 @@ def evaluate_category(category, limit, **kwargs):
     print 'Creating Loupes for', len(cat_mems), 'articles in', str(category) + '...'
     loupes = []  # NOTE: only used in debug mode, uses a lot more ram
     results = []
-    loupe_pool = gevent.pool.Pool(50)
+    loupe_pool = gevent.pool.Pool(20)
 
     def loupe_on_complete(grnlt):
         loupe = grnlt.value

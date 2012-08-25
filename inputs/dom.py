@@ -32,6 +32,12 @@ def section_stats(headers):
             totals.append((header.text_content().replace('[edit] ', ''), len(text.split())))
     return totals
 
+
+def pq_contains(elem, search):
+    """Just a quick factory function to create lambdas to do xpath in a cross-version way"""
+    return lambda f: len(f.root.xpath(u'{e}[contains("{s}")]'.format(e=elem, s=search)))
+
+
 class DOM(Input):
     def fetch(self):
         page = wapiti.get_articles(self.page_id)[0]
@@ -54,8 +60,8 @@ class DOM(Input):
         'external_links_total_count': lambda f: len(f('.external')),
         'links_count':      lambda f: len([text.text_content() for text in f('p a:not([class])[href^="/wiki/"]')]),
         'dom_internal_link_count': lambda f: len(f('p a:not([class])[href^="/wiki/"]')),
-        'ref_needed_count': lambda f: len(f('span:contains("citation")')),
-        'pov_statement_count': lambda f: len(f('span:contains("neutrality")')),
+        'ref_needed_count': pq_contains('span', 'citation'),
+        'pov_statement_count': pq_contains('span', 'neutrality'),
         'dom_category_count': lambda f: len(f("a[href^='/wiki/Category:']")),
         'image_count': lambda f: len(f('img')),
         'ogg': lambda f: len(f("a[href$='ogg']")),
@@ -73,15 +79,15 @@ class DOM(Input):
         'templ_dead_end': lambda f: len(f('.ambox-dead_end')),
         'templ_disputed': lambda f: len(f('.ambox-disputed')),
         'templ_essay_like': lambda f: len(f('.ambox-essay-like')),
-        'templ_expert': lambda f: len(f("td:contains('needs attention from an expert')")),
-        'templ_fansight': lambda f: len(f('td:contains("s point of view")')),
-        'templ_globalize': lambda f: len(f('td:contains("do not represent a worldwide view")')),
-        'templ_hoax': lambda f: len(f('td:contains("hoax")')),
+        'templ_expert': pq_contains('td', 'needs attention from an expert'),
+        'templ_fansight': pq_contains('td', 's point of view'),
+        'templ_globalize': pq_contains('td', 'do not represent a worldwide view'),
+        'templ_hoax': pq_contains('td', 'hoax'),
         'templ_in_universe': lambda f: len(f('.ambox-in-universe')),
         'templ_intro_rewrite': lambda f: len(f('.ambox-lead_rewrite')),
-        'templ_merge': lambda f: len(f('td:contains("suggested that this article or section be merged")')),
+        'templ_merge': pq_contains('td', 'suggested that this article or section be merged'),
         'templ_no_footnotes': lambda f: len(f('.ambox-No_footnotes')),
-        'templ_howto': lambda f: len(f('td:contains("contains instructions, advice, or how-to content")')),
+        'templ_howto': pq_contains('td', 'contains instructions, advice, or how-to content'),
         'templ_non_free': lambda f: len(f('.ambox-non-free')),
         'templ_notability': lambda f: len(f('.ambox-Notability')),
         'templ_not_english': lambda f: len(f('.ambox-not_English')),

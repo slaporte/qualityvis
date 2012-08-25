@@ -31,7 +31,10 @@ def do_input(input_name, page_title, page_id=None):
     if in_type is None:
         raise Exception('No input found with name "' + input_name + '"')
     # TODO: optional page_id, do lookup if None
-    return in_type(page_title, page_id)()
+    in_obj = in_type(page_title, page_id)
+    results = in_obj()
+    import pdb;pdb.set_trace()
+    return results
     #return in_obj.results
 
 if __name__ == '__main__':
