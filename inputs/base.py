@@ -38,7 +38,6 @@ class Input(Greenlet):
             ret['process'] = None
         return ret
 
-
     def fetch(self):
         raise NotImplemented  # TODO: convert to abstract class?
 
@@ -84,9 +83,10 @@ def get_url(url, params=None, raise_exc=True):
     import requests
     if params is None:
         params = {}
+    headers = {'accept-encoding': 'gzip'}
     resp = requests.Response()
     try:
-        resp = requests.get(url, params=params)
+        resp = requests.get(url, params=params, headers=headers)
     except Exception as e:
         if raise_exc:
             raise

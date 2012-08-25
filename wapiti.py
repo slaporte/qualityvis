@@ -32,13 +32,15 @@ def api_req(action, params=None, raise_exc=True, **kwargs):
     all_params.update(params)
     all_params['action'] = action
 
+    headers = {'accept-encoding': 'gzip'}
+
     resp = requests.Response()
     resp.results = None
     try:
         if action == 'edit':
-            resp = requests.post(API_URL, params=all_params)
+            resp = requests.post(API_URL, params=all_params, headers=headers)
         else:
-            resp = requests.get(API_URL, params=all_params)
+            resp = requests.get(API_URL, params=all_params, headers=headers)
 
     except Exception as e:
         if raise_exc:
