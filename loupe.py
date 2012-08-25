@@ -11,18 +11,7 @@ DEFAULT_PER_CALL = 1  # TODO: make a configurable dictionary of chunk sizes
 DEFAULT_TIMEOUT = 30
 ALL = 20000
 
-from inputs.backlinks import Backlinks
-from inputs.feedback import FeedbackV4
-from inputs.dom import DOM
-from inputs.google import GoogleNews
-from inputs.google import GoogleSearch
-from inputs.wikitrust import Wikitrust
-from inputs.grokse import PageViews
-from inputs.revisions import Revisions
-from inputs.assessment import Assessment
-
-DEFAULT_INPUTS = [Backlinks, FeedbackV4, DOM, GoogleNews, GoogleSearch, Wikitrust, PageViews, Revisions, Assessment]
-
+from inputs import DEFAULT_INPUTS, DOM, Revisions, Assessment
 
 limits = {  # Backlinks: 100,
             # FeedbackV4: 100,
@@ -58,7 +47,7 @@ class ArticleLoupe(object):
         self.inputs = [i(title   = self.title,
                          page_id = self.page_id) for i in input_classes]
         if input_pool is None:
-            input_pool = gevent.pool.Pool()  # might as well be a set() for how we use it
+            input_pool = gevent.pool.Pool()
         self.input_pool = input_pool
         self._int_input_pool = gevent.pool.Pool()
         self.results = {}
