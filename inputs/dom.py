@@ -20,17 +20,16 @@ def section_stats(headers):
     all_headers = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7']
     totals = []
     for header in hs:
-        pos = header
-        needles = []
-        text = ''
-        while pos.tag not in needles:
-            text += ' ' + pos.text_content()
-            if pos.getnext():
-                pos = pos.getnext()
-                needles = all_headers
-            else:
-                break
-        totals.append((header.text_content().replace('[edit] ', ''), len(text.split())))
+        if header.getnext() is not None:
+            pos = header.getnext()
+            text = ''
+            while pos.tag not in all_headers:
+                text += ' ' + pos.text_content()
+                if pos.getnext() is not None:
+                    pos = pos.getnext()
+                else:
+                    break
+            totals.append((header.text_content().replace('[edit] ', ''), len(text.split())))
     return totals
 
 class DOM(Input):
