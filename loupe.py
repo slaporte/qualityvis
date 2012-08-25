@@ -76,7 +76,7 @@ class ArticleLoupe(object):
 
     def _comp_hook(self, grnlt, **kwargs):
         self._comp_inputs_count += 1
-        self.results.update(grnlt.value)
+        self.results.update(grnlt.results)
 
     @property
     def is_complete(self):

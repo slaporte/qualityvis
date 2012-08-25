@@ -50,7 +50,6 @@ class Input(Greenlet):  # TODO: subclass Greenlet?
             e_msg = "Fetch failed on {i_t} input for article {p_t} ({p_id}) with exception {e}"
             e_msg = e_msg.format(p_t=self.page_title, p_id=self.page_id, i_t=self.class_name, e=repr(e))
             print e_msg
-            return
         proc_res = self.process(self.fetch_results)
         self.results = proc_res
         if isinstance(proc_res, Exception):
