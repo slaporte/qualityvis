@@ -21,6 +21,24 @@ class Input(Greenlet):
     def import_name(self):
         return '.'.join((str(self.__module__), str(self.__class__.__name__)))
 
+    @property
+    def durations(self):
+        ret = {}
+        try:
+            ret['total'] = self.times['complete'] - self.times['create']
+        except:
+            ret['total'] = None
+        try:
+            ret['fetch'] = self.times['fetch_end'] - self.times['fetch_start']
+        except:
+            ret['fetch'] = None
+        try:
+            ret['process'] = self.times['process_end'] - self.times['process_start']
+        except:
+            ret['process'] = None
+        return ret
+
+
     def fetch(self):
         raise NotImplemented  # TODO: convert to abstract class?
 
@@ -48,14 +66,12 @@ class Input(Greenlet):
             e_msg = e_msg.format(p_t=self.page_title, p_id=self.page_id, i_t=self.class_name, e=repr(e))
             print e_msg
         finally:
-            self.times['fetch_end'] = time.time()
-        self.times['process_start'] = time.time()
+            self.times['fetch_end'] = self.times['process_start'] = time.time()
         proc_res = self.process(self.fetch_results)
-        self.times['process_end'] = time.time()
         self.results = proc_res
         if isinstance(proc_res, Exception):
             print type(self), 'process step glubbed up on', self.page_title
-        self.times['complete'] = time.time()
+        self.times['process_end'] = self.times['complete'] = time.time()
         return proc_res
 
     _run = __call__

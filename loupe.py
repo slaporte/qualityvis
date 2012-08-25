@@ -52,8 +52,7 @@ class ArticleLoupe(object):
         self.results = {}
         self.fetch_results = {}
 
-        self.times = {}
-        self.times['create'] = time.time()
+        self.times = {'create': time.time()}
         self._comp_inputs_count = 0
 
     def process_inputs(self):
@@ -69,6 +68,15 @@ class ArticleLoupe(object):
         self.results.update(grnlt.results)
         if self.is_complete:
             self.times['complete'] = time.time()
+
+    @property
+    def durations(self):
+        ret = dict([(i.class_name, i.durations) for i in self.inputs])
+        try:
+            ret['total'] = self.times['complete'] - self.times['create']
+        except:
+            pass
+        return ret
 
     @property
     def is_complete(self):
@@ -110,12 +118,12 @@ def evaluate_category(category, limit, **kwargs):
     def loupe_on_complete(grnlt):
         loupe = grnlt.value
         results.append(loupe.results)
-        kwargs = {'cr_i': loupe.create_i,
-                  'co_i': len(results),
-                  'count': len(cat_mems),
-                  'title': loupe.title,
-                  'dur': time.time() - loupe.times['create']}
-        log_msg = u'#{co_i}/{count} (#{cr_i}) "{title}" took {dur:.4f} seconds'.format(**kwargs)
+        msg_params = {'cr_i': loupe.create_i,
+                      'co_i': len(results),
+                      'count': len(cat_mems),
+                      'title': loupe.title,
+                      'dur': time.time() - loupe.times['create']}
+        log_msg = u'#{co_i}/{count} (#{cr_i}) "{title}" took {dur:.4f} seconds'.format(**msg_params)
         print log_msg
         if kwargs.get('debug'):
             loupes.append(loupe)
