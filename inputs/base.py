@@ -1,3 +1,4 @@
+import time
 from gevent.greenlet import Greenlet
 
 class Input(Greenlet):
@@ -9,6 +10,7 @@ class Input(Greenlet):
         self.attempts = 0
         self.fetch_results = None
         self.results = None
+        self.times = {'create': time.time()}
         super(Input, self).__init__(*args, **kwargs)
 
     @property
@@ -37,6 +39,7 @@ class Input(Greenlet):
         return ret
 
     def __call__(self):
+        self.times['fetch_start'] = time.time()
         try:
             self.fetch_results = self.fetch()
         except Exception as e:
@@ -44,14 +47,22 @@ class Input(Greenlet):
             e_msg = "Fetch failed on {i_t} input for article {p_t} ({p_id}) with exception {e}"
             e_msg = e_msg.format(p_t=self.page_title, p_id=self.page_id, i_t=self.class_name, e=repr(e))
             print e_msg
+        finally:
+            self.times['fetch_end'] = time.time()
+        self.times['process_start'] = time.time()
         proc_res = self.process(self.fetch_results)
+        self.times['process_end'] = time.time()
         self.results = proc_res
         if isinstance(proc_res, Exception):
             print type(self), 'process step glubbed up on', self.page_title
+        self.times['complete'] = time.time()
         return proc_res
 
     _run = __call__
 
+
+class WikipediaInput(Input):
+    pass
 
 def get_url(url, params=None, raise_exc=True):
     import requests
