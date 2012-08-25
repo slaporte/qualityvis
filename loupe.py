@@ -114,16 +114,26 @@ def evaluate_category(category, limit, **kwargs):
     results = []
     loupe_pool = gevent.pool.Pool(20)
 
+    create_i = 0
+
     def loupe_on_complete(grnlt):
         loupe = grnlt.value
-        print 'loupe created for', loupe.title, 'took', time.time() - loupe.start_time, 'seconds'
+        results.append(loupe.results)
+        kwargs = {'cr_i': loupe.create_i,
+                  'co_i': len(results),
+                  'count': len(cat_mems),
+                  'title': loupe.title,
+                  'dur': time.time() - loupe.start_time}
+        log_msg = u'#{co_i}/{count} (#{cr_i}) "{title}" took {dur} seconds'.format(**kwargs)
+        print log_msg
         if kwargs.get('debug'):
             loupes.append(loupe)
-        results.append(loupe.results)
 
     fancy_pool = FancyInputPool(limits)
     for cm in cat_mems:
         al = ArticleLoupe(cm.title, cm.page_id, input_pool=fancy_pool)
+        create_i += 1
+        al.create_i = create_i
         loupe_pool.spawn(al.process_inputs).link(loupe_on_complete)
     loupe_pool.join()
 
