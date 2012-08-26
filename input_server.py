@@ -28,11 +28,14 @@ for im in input_mods:
             AVAIL_INPUTS[m.__name__.lower()] = m
 AVAIL_INPUTS.pop('Input', None)
 
-
+@route('/<input_name>/')
+@route('/<input_name>/<page_title>')
 @route('/<input_name>/<page_title>/')
 @route('/<input_name>/<page_title>/<page_id:int>')
-def do_input(input_name, page_title, page_id=None):
+def do_input(input_name, page_title='', page_id=None):
     in_type = AVAIL_INPUTS.get(input_name.lower())
+    page_title = request.query.title or page_title
+    page_id = request.query.page_id or page_id
     if in_type is None:
         raise Exception('No input found with name "' + input_name + '"')
     if not page_title:
@@ -43,14 +46,9 @@ def do_input(input_name, page_title, page_id=None):
     # TODO: optional page_id, do lookup if None
     in_obj = in_type(page_title, page_id)
     results = in_obj()
+    results['durations'] = in_obj.durations
     return results
     #return in_obj.results
-
-@route('/<input_name>/')
-def do_input_qs(input_name):
-    page_title = request.query.title
-    page_id = request.query.page_id
-    return do_input(input_name, page_title, page_id)
 
 if __name__ == '__main__':
     bottle.debug(True)

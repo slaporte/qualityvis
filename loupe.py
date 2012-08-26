@@ -6,7 +6,7 @@ import wapiti
 
 DEFAULT_CAT = "Featured articles that have appeared on the main page"
 DEFAULT_LIMIT = 100
-DEFAULT_CONC  = 100
+DEFAULT_CONC  = 20
 DEFAULT_PER_CALL = 1  # TODO: make a configurable dictionary of chunk sizes
 DEFAULT_TIMEOUT = 30
 ALL = 20000
@@ -74,7 +74,7 @@ class ArticleLoupe(object):
         ret = dict([(i.class_name, i.durations) for i in self.inputs])
         try:
             ret['total'] = self.times['complete'] - self.times['create']
-        except:
+        except KeyError:
             pass
         return ret
 
@@ -104,16 +104,19 @@ def flatten_dict(root, prefix_keys=True):
                 ret[prefix] = v
     return ret
 
-
+from dashboard import LoupeDashboard
 def evaluate_category(category, limit, **kwargs):
     print 'Fetching members of category', str(category) + '...'
     cat_mems = wapiti.get_category(category, count=limit, to_zero_ns=True)
     print 'Creating Loupes for', len(cat_mems), 'articles in', str(category) + '...'
     loupes = []  # NOTE: only used in debug mode, uses a lot more ram
     results = []
-    loupe_pool = gevent.pool.Pool(20)
+    loupe_pool = gevent.pool.Pool(kwargs.get('concurrency', DEFAULT_CONC))
 
     create_i = 0
+
+    dash = LoupeDashboard(loupe_pool, results)
+    dash.run()
 
     def loupe_on_complete(grnlt):
         loupe = grnlt.value
@@ -168,6 +171,8 @@ def parse_args():
     parser.add_option("-q", "--quiet", dest="verbose", action="store_false",
                       help="suppress output (TODO)")
     return parser.parse_args()
+
+from dashboard import LoupeDashboard
 
 if __name__ == '__main__':
     opts, args = parse_args()
