@@ -21,6 +21,8 @@ def set_info(revisions):
         'abs_byte_dist': dist_stats([abs(rev['rev_diff']) for rev in revisions]) if revisions else {},
         'IP_edit_count':  len([rev for rev in revisions if rev['rev_user'] == 0]),
         'revert_estimate':  len([rev for rev in revisions if 'revert' in rev['rev_comment'].lower()]),
+        'blank_count': len([x for x in revisions if x['rev_len'] == 0]),
+        'deleted_count': len([x for x in revisions if x['rev_deleted'] > 0]),
         'ed_returning': len([(a, c) for (a, c) in editor_counts.iteritems() if c > RETURNING_ED_THRESHOLD]),
         'ed_unique': len(editor_counts),
         'ed_top_20': get_top_percent_editors(.20, sorted_editor_counts, len(revisions)),
@@ -93,17 +95,52 @@ def preprocess_revs(revs):
         rev['rev_parsed_date'] = parse_date_string(rev['rev_timestamp'])
         rev['rev_diff'] = rev['rev_len'] - prev_len
         prev_len = rev['rev_len']
-    return
+
+    return revs
+
+REVERT_WINDOW = 4
+SLEUTHING_FACTOR = 10
+from collections import OrderedDict
+
+
+def partition_reverts(revs):
+    reverted = OrderedDict()
+    clean = []
+    for i, rev in enumerate(revs):
+        if rev['rev_id'] in reverted:
+            continue
+        window = REVERT_WINDOW  # if comment contains 'revert' do something
+        if 'revert' in rev['rev_comment'].lower():
+            window += SLEUTHING_FACTOR
+        wrevs = revs[max(i - window, 0):i]
+        for wi, wrev in enumerate(wrevs):
+            if wrev['rev_sha1'] == rev['rev_sha1']:
+                # found a revert thang
+                wreverted = dict([(r['rev_id'], r) for r in wrevs[wi + 1:]])
+                reverted.update(wreverted)
+                reverted[rev['rev_id']] = rev
+                break
+
+    clean = [r for r in revs if r['rev_id'] not in reverted]
+    return reverted.values(), clean
 
 
 class Revisions(Input):
     def fetch(self):
+        ret = {}
         revs = get_json('http://ortelius.toolserver.org:8089/all/?title=' + self.page_title.replace(' ', '_'))
-        preprocess_revs(revs['article'])
-        preprocess_revs(revs['talk'])
-        return revs
+        ret['article'] = preprocess_revs(revs['article'])
+        ret['talk'] = preprocess_revs(revs['talk'])
+
+        ret['article_reverted'], ret['article_without_reverted'] = partition_reverts(ret['article'])
+        ret['talk_reverted'], ret['talk_without_reverted'] = partition_reverts(ret['talk'])
+        return ret
 
     stats = {
-        'article_revs': lambda f: all_revisions(f['article']),
-        'talk_revs': lambda f: all_revisions(f['talk'])
+        'revs_without_reverted': lambda f: all_revisions(f['article_without_reverted']),
+        'revs_reverted': lambda f: all_revisions(f['article_reverted']),
+        'revs': lambda f: all_revisions(f['article']),
+        'talks_without_reverted': lambda f: all_revisions(f['talk_without_reverted']),
+        'talks_reverted': lambda f: all_revisions(f['talk_reverted']),
+        'talks': lambda f: all_revisions(f['talk']),
     }
