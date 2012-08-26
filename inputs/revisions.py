@@ -3,8 +3,12 @@ from stats import dist_stats
 from datetime import datetime, timedelta
 from itertools import chain
 from math import ceil
+from collections import Counter, OrderedDict, defaultdict
 
+REVERT_WINDOW = 4
+SLEUTHING_FACTOR = 10
 RETURNING_ED_THRESHOLD = 5
+
 
 def parse_date_string(stamp):
     return datetime.strptime(stamp, '%Y%m%d%H%M%S')
@@ -13,6 +17,8 @@ def parse_date_string(stamp):
 def set_info(revisions):
     editor_counts = get_editor_counts(revisions)
     sorted_editor_counts = sorted(editor_counts.iteritems(), key=lambda (k, v): v, reverse=True)
+    sorted_editor_bytes = sorted(get_editor_bytes(revisions).iteritems(), key=lambda (k, v): v, reverse=True)
+    abs_byte_sum = sum([abs(x['rev_diff']) for x in revisions])
 
     return {
         'count':    len(revisions),
@@ -27,7 +33,8 @@ def set_info(revisions):
         'ed_unique': len(editor_counts),
         'ed_top_20': get_top_percent_editors(.20, sorted_editor_counts, len(revisions)),
         'ed_top_5': get_top_percent_editors(.05, sorted_editor_counts, len(revisions)),
-        'ed_highest': sorted_editor_counts[0] if sorted_editor_counts else None,
+        'ed_top_20_bytes': get_top_percent_editors(.20, sorted_editor_bytes, abs_byte_sum),
+        'ed_top_5_bytes': get_top_percent_editors(.05, sorted_editor_bytes, abs_byte_sum),
         }
 
 
@@ -44,18 +51,21 @@ def newer_than(num_days, rev_list):
 
 
 def get_editor_counts(revisions):
-    authors = {}
+    editors = defaultdict(int)
     for rev in revisions:
-        user = rev['rev_user_text']
-        try:
-            authors[user] += 1
-        except KeyError:
-            authors[user] = 1
-    return authors
+        editors[rev['rev_user_text']] += 1
+    return editors
+
+
+def get_editor_bytes(revisions):
+    editors = defaultdict(int)
+    for rev in revisions:
+        editors[rev['rev_user_text']] += abs(rev['rev_diff'])
+    return editors
 
 
 def get_top_percent_editors(percent, sorted_editor_counts, rev_len):
-    if sorted_editor_counts:
+    if sorted_editor_counts and rev_len > 0:
         threshold = int(ceil(len(sorted_editor_counts) * percent))
         top_editors = sorted_editor_counts[:threshold]
         total = sum([v for (k, v) in top_editors], 0)
@@ -98,10 +108,6 @@ def preprocess_revs(revs):
 
     return revs
 
-REVERT_WINDOW = 4
-SLEUTHING_FACTOR = 10
-from collections import OrderedDict
-
 
 def partition_reverts(revs):
     reverted = OrderedDict()
@@ -120,6 +126,8 @@ def partition_reverts(revs):
                 reverted.update(wreverted)
                 reverted[rev['rev_id']] = rev
                 break
+        if rev['rev_len'] == 0:
+            reverted[rev['rev_id']] = rev
 
     clean = [r for r in revs if r['rev_id'] not in reverted]
     return reverted.values(), clean
