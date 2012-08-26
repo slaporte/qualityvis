@@ -17,7 +17,7 @@ from progress import ProgressMeter
 API_URL = "http://en.wikipedia.org/w/api.php"
 DEFAULT_CONC     = 100
 DEFAULT_PER_CALL = 4
-DEFAULT_TIMEOUT  = 30
+DEFAULT_TIMEOUT  = 15
 
 
 class WikiException(Exception): pass
@@ -38,9 +38,9 @@ def api_req(action, params=None, raise_exc=True, **kwargs):
     resp.results = None
     try:
         if action == 'edit':
-            resp = requests.post(API_URL, params=all_params, headers=headers)
+            resp = requests.post(API_URL, params=all_params, headers=headers, timeout=DEFAULT_TIMEOUT)
         else:
-            resp = requests.get(API_URL, params=all_params, headers=headers)
+            resp = requests.get(API_URL, params=all_params, headers=headers, timeout=DEFAULT_TIMEOUT)
 
     except Exception as e:
         if raise_exc:

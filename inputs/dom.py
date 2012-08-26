@@ -1,4 +1,4 @@
-from base import Input
+from base import Input, get_url
 import wapiti
 from pyquery import PyQuery
 
@@ -16,6 +16,7 @@ def paragraph_counts(pq):
 
 def section_stats(headers):
     hs = (h for h in headers if h.text_content() != 'Contents')
+    # how not to write Python: ['h'+str(i) for i in range(1, 8)]
     all_headers = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7']
     totals = []
     for header in hs:
@@ -38,10 +39,21 @@ def pq_contains(elem, search):
 
 
 class DOM(Input):
-    def fetch(self):
+    def api_fetch(self):
+        """
+        Deprecated fetch() that gets parsed content from the API.
+        The API doesn't cache parsed wikitext, and can be up to 10x slower
+        depending on page complexity.
+        """
         page = wapiti.get_articles(self.page_id)[0]
-        text = page.rev_text
-        return PyQuery(text)
+        pq = PyQuery(page.rev_text)
+        return pq
+
+    def fetch(self):
+        # avg process time: 0.14827052116394043 seconds
+        page = get_url('http://en.wikipedia.org/wiki/'+self.page_title.replace(' ', '_'))
+        ret = PyQuery(page.text).find('div#content')
+        return ret
 
     stats = {
         'word_count':       lambda f: len(f('p').text().split()),
