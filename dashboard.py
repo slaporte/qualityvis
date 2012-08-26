@@ -11,6 +11,22 @@ DEFAULT_PORT = 1870
 DEFAULT_SERVER = 'gevent'
 
 
+def find_port(host=DEFAULT_HOST, start_port=DEFAULT_PORT, end_port=None):
+    import socket
+    start_port = int(start_port)
+    end_port = end_port or start_port + 100
+    for p in range(start_port, end_port):
+        try:
+            s = socket.socket()
+            s.bind((host, p))
+        except socket.error:
+            continue
+        else:
+            s.close()
+            return p
+    return None
+
+
 class LoupeDashboard(Bottle):
 
     def __init__(self, loupe_pool, results, *args, **kwargs):
@@ -24,7 +40,12 @@ class LoupeDashboard(Bottle):
         if self.tpool is None:
             self.tpool = ThreadPool(2)
         kwargs['host'] = kwargs.get('host', DEFAULT_HOST)
-        kwargs['port'] = kwargs.get('port', DEFAULT_PORT)
+        pref_port = kwargs.get('port', DEFAULT_PORT)
+        port = find_port(kwargs['host'], pref_port)
+        if port is None:
+            raise Exception('Could not find suitable port to run LoupeDashboard server.')
+        else:
+            kwargs['port'] = port
         kwargs['server'] = kwargs.get('server', DEFAULT_SERVER)
         self.tpool.spawn(run, self, **kwargs)
 
