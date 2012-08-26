@@ -9,5 +9,6 @@ from wikitrust import Wikitrust
 from grokse import PageViews
 from revisions import Revisions
 from assessment import Assessment
+from langlinks import LangLinks
 
-DEFAULT_INPUTS = [Backlinks, FeedbackV4, DOM, GoogleNews, GoogleSearch, Wikitrust, PageViews, Revisions, Assessment]
+DEFAULT_INPUTS = [Backlinks, LangLinks, FeedbackV4, DOM, GoogleNews, GoogleSearch, Wikitrust, PageViews, Revisions, Assessment]
