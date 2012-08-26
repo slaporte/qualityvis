@@ -3,6 +3,8 @@ from gevent.greenlet import Greenlet
 
 class Input(Greenlet):
 
+    retries = 3
+
     def __init__(self, title, page_id, *args, **kwargs):
         self.page_title = title
         self.page_id    = page_id
@@ -57,15 +59,19 @@ class Input(Greenlet):
 
     def __call__(self):
         self.times['fetch_start'] = time.time()
-        try:
-            self.fetch_results = self.fetch()
-        except Exception as e:
-            # TODO: retry and/or return iterable with blank results?
-            e_msg = "Fetch failed on {i_t} input for article {p_t} ({p_id}) with exception {e}"
-            e_msg = e_msg.format(p_t=self.page_title, p_id=self.page_id, i_t=self.class_name, e=repr(e))
-            print e_msg
-        finally:
-            self.times['fetch_end'] = self.times['process_start'] = time.time()
+        for i in range(0, self.retries):
+            self.attempts += 1
+            try:
+                self.fetch_results = self.fetch()
+            except Exception as e:
+                e_msg = "Fetch failed on {i_t} input for article {p_t} ({p_id}) with exception {e}"
+                e_msg = e_msg.format(p_t=self.page_title, p_id=self.page_id, i_t=self.class_name, e=repr(e))
+                print e_msg
+            else:
+                break
+            finally:
+                self.times['fetch_end'] = self.times['process_start'] = time.time()
+
         proc_res = self.process(self.fetch_results)
         self.results = proc_res
         if isinstance(proc_res, Exception):
@@ -86,7 +92,7 @@ def get_url(url, params=None, raise_exc=True):
     headers = {'accept-encoding': 'gzip'}
     resp = requests.Response()
     try:
-        resp = requests.get(url, params=params, headers=headers)
+        resp = requests.get(url, params=params, headers=headers, timeout=15)
     except Exception as e:
         if raise_exc:
             raise
