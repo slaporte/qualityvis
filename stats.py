@@ -1,5 +1,8 @@
 def mean(vals):
-    return sum(vals) / len(vals)
+    if vals:
+        return sum(vals, 0.0) / len(vals)
+    else:
+        return 0.0
 
 
 def median(vals):
@@ -8,7 +11,7 @@ def median(vals):
     if size % 2 == 1:
         return copy[(size - 1) / 2]
     else:
-        return (copy[size / 2 - 1] + copy[size / 2]) / 2
+        return (copy[size / 2 - 1] + copy[size / 2]) / 2.0
 
 
 def pow_diff(vals, power):
@@ -25,17 +28,29 @@ def std_dev(vals):
 
 
 def rel_std_dev(vals):
-    return std_dev(vals) / mean(vals)
+    val_mean = mean(vals)
+    if val_mean:
+        return std_dev(vals) / val_mean
+    else:
+        return 0.0
 
 
 def skewness(vals):
-    return (sum(pow_diff(vals, 3)) /
-            ((len(vals) - 1) * (std_dev(vals) ** 3)))
+    s_dev = std_dev(vals)
+    if len(vals) > 1 and s_dev > 0:
+        return (sum(pow_diff(vals, 3)) /
+                float((len(vals) - 1) * (s_dev ** 3)))
+    else:
+        return 0.0
 
 
 def kurtosis(vals):
-    return (sum(pow_diff(vals, 4)) /
-            ((len(vals) - 1) * (std_dev(vals) ** 4)))
+    s_dev = std_dev(vals)
+    if len(vals) > 1 and s_dev > 0:
+        return (sum(pow_diff(vals, 4)) /
+                float((len(vals) - 1) * (s_dev ** 4)))
+    else:
+        return 0.0
 
 
 def dist_stats(vals):
