@@ -33,6 +33,10 @@ def section_stats(headers):
     return totals
 
 
+def element_words_dist(elem):
+    return lambda f: dist_stats([len(navbox.text_content().split()) for navbox in f(elem)])
+
+
 def pq_contains(elem, search):
     """Just a quick factory function to create lambdas to do xpath in a cross-version way"""
     return lambda f: len(f.root.xpath(u'{e}[contains("{s}")]'.format(e=elem, s=search)))
@@ -56,28 +60,36 @@ class DOM(Input):
         return ret
 
     stats = {
-        'word_count':       lambda f: len(f('p').text().split()),
+        'words':       lambda f: len(f('p').text().split()),
         'p_dist':           lambda f: dist_stats(paragraph_counts(f)),
-        'reference_count':  lambda f: len(f('.reference')),
-        'source_count':     lambda f: len(f('li[id^="cite_note"]')),
-        'reference_section_count': lambda f: len(f('#References')),
-        'external_links_section_count': lambda f:  len(f('#External_links')),
-        'intro_p_count': lambda f: len(f('#toc').prevAll('p')),
-        'new_internal_links_count': lambda f: len(f('.new')),
-        'infobox_count': lambda f: len(f('.infobox')),
+        'references':  lambda f: len(f('.reference')),
+        'sources':     lambda f: len(f('li[id^="cite_note"]')),
+        'reference_sections': lambda f: len(f('#References')),
+        'external_links_sections': lambda f:  len(f('#External_links')),
+        'intro_ps': lambda f: len(f('#toc').prevAll('p')),
+        'new_internal_links': lambda f: len(f('.new')),
+        'infoboxes': lambda f: len(f('.infobox')),
+        'navbox_words_dist': element_words_dist('.navbox'),
         'footnotes_in_section': lambda f: len(f('#Footnotes').parent().nextAll('div').children('ul').children('li')),
         'external_links_in_section': lambda f: len(f('#External_links').parent().nextAll('ul').children()),
         'see_also_links_in_section': lambda f: len(f('#See_also').parent().nextAll('ul').children()),
-        'external_links_total_count': lambda f: len(f('.external')),
-        'links_count':      lambda f: len([text.text_content() for text in f('p a:not([class])[href^="/wiki/"]')]),
-        'dom_internal_link_count': lambda f: len(f('p a:not([class])[href^="/wiki/"]')),
-        'ref_needed_count': pq_contains('span', 'citation'),
-        'pov_statement_count': pq_contains('span', 'neutrality'),
-        'dom_category_count': lambda f: len(f("a[href^='/wiki/Category:']")),
-        'image_count': lambda f: len(f('img')),
+        'external_links_totals': lambda f: len(f('.external')),
+        'links':      lambda f: len([text.text_content() for text in f('p a:not([class])[href^="/wiki/"]')]),
+        'dom_internal_links': lambda f: len(f('p a:not([class])[href^="/wiki/"]')),
+        'ref_needed_spans': pq_contains('span', 'citation'),
+        'pov_statement_spans': pq_contains('span', 'neutrality'),
+        'categories': lambda f: len(f("#mw-normal-catlinks ul li")),
+        'hidden_cats': lambda f: len(f('#mw-hidden-catlinks ul li')),
+        'images': lambda f: len(f('img')),
+        'caption_words_dist': element_words_dist('.thumbcaption'),
         'ogg': lambda f: len(f("a[href$='ogg']")),
         'mid': lambda f: len(f("a[href$='mid']")),
         'geo': lambda f: len(f('.geo-dms')),
+        'blockquote': lambda f: len(f('blockquote')),
+        'related_section_links': lambda f: len(f('.rellink')),
+        'metadata_links': lambda f:len(f('.metadata.plainlinks')), # Commons related media
+        'spoken_wp': lambda f: len(f('#section_SpokenWikipedia')),
+        'wikitable_dist': element_words_dist('table.wikitable'),
         'templ_delete': lambda f: len(f('.ambox-delete')),
         'templ_autobiography': lambda f: len(f('.ambox-autobiography')),
         'templ_advert': lambda f: len(f('.ambox-Advert')),
