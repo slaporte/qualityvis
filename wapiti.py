@@ -242,9 +242,24 @@ def get_langlinks(title, **kwargs):
               'titles': title,
               'lllimit': 500,  # TODO?
               }
-    query_results = api_req('query', params).results['query']['pages'].values()[0]['langlinks']
+    try:
+        query_results = api_req('query', params).results['query']['pages'].values()[0]['langlinks']
+    except KeyError:
+        query_results = []
     ret = [link.get('lang') for link in query_results if link.get('lang')]
     return ret
+
+
+def get_interwikilinks(title, **kwargs):
+    params = {'prop': 'iwlinks',
+              'titles': title,
+              'iwlimit': 500,  # TODO?
+              }
+    try:
+        query_results = api_req('query', params).results['query']['pages'].values()[0]['iwlinks']
+    except KeyError:
+        query_results = []
+    return query_results
 
 
 def get_feedback_stats(page_id, **kwargs):

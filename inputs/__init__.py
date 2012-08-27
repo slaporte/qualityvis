@@ -10,5 +10,6 @@ from grokse import PageViews
 from revisions import Revisions
 from assessment import Assessment
 from langlinks import LangLinks
+from interwikilinks import InterWikiLinks
 
-DEFAULT_INPUTS = [Backlinks, LangLinks, FeedbackV4, DOM, GoogleNews, GoogleSearch, Wikitrust, PageViews, Revisions, Assessment]
+DEFAULT_INPUTS = [Backlinks, LangLinks, InterWikiLinks, FeedbackV4, DOM, GoogleNews, GoogleSearch, Wikitrust, PageViews, Revisions, Assessment]
