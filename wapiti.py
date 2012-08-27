@@ -292,6 +292,16 @@ def get_backlinks(title, **kwargs):
     return api_req('query', params).results['query']['backlinks']
 
 
+def get_langlinks(title, **kwargs):
+    params = {'prop': 'langlinks',
+              'titles': title,
+              'lllimit': 500,  # TODO?
+              }
+    query_results = api_req('query', params).results['query']['pages'].values()[0]['langlinks']
+    ret = [link.get('lang') for link in query_results if link.get('lang')]
+    return ret
+
+
 def get_feedback_stats(page_id, **kwargs):
     params = {'list': 'articlefeedback',
               'afpageid': page_id

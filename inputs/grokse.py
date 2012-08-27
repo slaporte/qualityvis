@@ -11,6 +11,5 @@ class PageViews(Input):
         return get_json('http://stats.grok.se/json/en/latest90/' + self.page_title)
 
     stats = {
-        'page_views': lambda f: daily_views(f),
         'pv_dist': lambda f: dist_stats(daily_views(f)),
     }
