@@ -21,7 +21,7 @@ DEFAULT_TIMEOUT  = 15
 
 
 class WikiException(Exception): pass
-CategoryMember = namedtuple("CategoryMember", "page_id, ns, title")
+PageIdentifier = namedtuple("PageIdentifier", "page_id, ns, title")
 Page = namedtuple("Page", "title, req_title, namespace, page_id, rev_id, rev_text, is_parsed, fetch_date, fetch_duration")
 
 
@@ -95,7 +95,7 @@ def get_category_old(cat_name, count=500, cont_str=""):
         except:
             print resp.error  # log
             raise
-        ret.extend([CategoryMember(page_id=cm['pageid'],
+        ret.extend([PageIdentifier(page_id=cm['pageid'],
                                    ns     =cm['ns'],
                                    title  =cm['title'])
                      for cm in qres['categorymembers']
@@ -106,12 +106,6 @@ def get_category_old(cat_name, count=500, cont_str=""):
             cont_str = None
 
     return ret
-
-"""
-http://en.wikipedia.org/w/api.php?action=query&generator=categorymembers
-&gcmtitle=Category:Featured_articles_that_have_appeared_on_the_main_page
-&prop=info&inprop=subjectid&format=json
-"""
 
 
 def get_category(cat_name, count=500, to_zero_ns=False, cont_str=""):
@@ -147,11 +141,72 @@ def get_category(cat_name, count=500, to_zero_ns=False, cont_str=""):
                 title = cm['title']
                 page_id = cm['pageid']
 
-            ret.append(CategoryMember(title = title,
+            ret.append(PageIdentifier(title = title,
                                       page_id = page_id,
                                       ns = namespace))
         try:
             cont_str = resp.results['query-continue']['categorymembers']['gcmcontinue']
+        except:
+            cont_str = None
+
+    return ret
+
+# TODO: default 'limit' to infinity/all
+def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=500, to_zero_ns=True):
+    ret = []
+    cont_str = ""
+    params = {'generator':  'embeddedin',
+              'prop':       'info',
+              'inprop':     'title|pageid|ns|subjectid'}
+    if page_title and page_id:
+        raise ValueError('Expected one of page_title or page_id, not both.')
+    elif page_title:
+        params['geititle'] = page_title
+    elif page_id:
+        params['geipageid'] = str(page_id)
+    else:
+        raise ValueError('page_title and page_id cannot both be blank.')
+    if namespaces is not None:
+        try:
+            if isinstance(namespaces, basestring):
+                namespaces_str = namespaces
+            else:
+                namespaces_str = '|'.join([str(int(n)) for n in namespaces])
+        except TypeError:
+            namespaces_str = str(namespaces)
+        params['geinamespace'] = namespaces_str
+    while len(ret) < limit and cont_str is not None:
+        cur_count = min(limit - len(ret), 500)
+        params['geilimit']    = cur_count
+        if cont_str:
+            params['geicontinue'] = cont_str
+
+        resp = api_req('query', params)
+        try:
+            qres = resp.results['query']
+        except:
+            print resp.error  # log
+            raise
+        for k, pi in qres['pages'].iteritems():
+            if not pi.get('pageid'):
+                continue
+            ns = pi['ns']
+            if ns != 0 and to_zero_ns:  # non-Main/zero namespace
+                try:
+                    _, _, title = pi['title'].partition(':')
+                    page_id = pi['subjectid']
+                    ns = 0
+                except KeyError as e:
+                    continue  # TODO: log
+            else:
+                title = pi['title']
+                page_id = pi['pageid']
+
+            ret.append(PageIdentifier(title = title,
+                                      page_id = page_id,
+                                      ns = ns))
+        try:
+            cont_str = resp.results['query-continue']['embeddedin']['geicontinue']
         except:
             cont_str = None
 

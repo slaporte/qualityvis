@@ -1,7 +1,11 @@
 from optparse import OptionParser
-
+import logging
 import time
+from collections import OrderedDict
+
 import gevent
+from gevent.greenlet import Greenlet
+
 import wapiti
 
 DEFAULT_CAT = "Featured articles that have appeared on the main page"
@@ -12,6 +16,7 @@ DEFAULT_TIMEOUT = 30
 ALL = 20000
 
 from inputs import DEFAULT_INPUTS, DOM, Revisions, Assessment
+from dashboard import LoupeDashboard
 
 limits = {  # Backlinks: 100,
             # FeedbackV4: 100,
@@ -37,8 +42,8 @@ class FancyInputPool(gevent.pool.Pool):
         return
 
 
-class ArticleLoupe(object):
-    def __init__(self, title, page_id, input_classes=None, input_pool=None):
+class ArticleLoupe(Greenlet):
+    def __init__(self, title, page_id, input_classes=None, input_pool=None, *args, **kwargs):
         self.title = title
         self.page_id = page_id
         if input_classes is None:
@@ -55,6 +60,8 @@ class ArticleLoupe(object):
         self.times = {'create': time.time()}
         self._comp_inputs_count = 0
 
+        super(ArticleLoupe, self).__init__(*args, **kwargs)
+
     def process_inputs(self):
         for i in self.inputs:
             i.link(self._comp_hook)
@@ -62,6 +69,11 @@ class ArticleLoupe(object):
             self.input_pool.start(i)
         self._int_input_pool.join()
         return self
+
+    def _run(self):
+        return self.process_inputs()
+
+    #_run = process_inputs  # pretty much all you need to make a Greenlet
 
     def _comp_hook(self, grnlt, **kwargs):
         self._comp_inputs_count += 1
@@ -82,6 +94,28 @@ class ArticleLoupe(object):
     def is_complete(self):
         #return len(self.results) == sum([len(i.stats) for i in self.inputs])
         return len(self.inputs) == self._comp_inputs_count
+
+    def to_dict(self):
+        ret = {}
+        ret.update(self.results)
+        ret['status'] = self.get_status()
+        return ret
+
+    def get_status(self):
+        input_statuses = dict([ (i.class_name, i.status) for i in self.inputs ])
+        is_complete = all([ i['is_complete'] for i in input_statuses.itervalues() ])
+        is_successful = all([ i['is_successful'] for i in input_statuses.itervalues() ])
+        ret = {
+            'durations': self.durations,
+            'page_id': self.page_id,
+            'title': self.title,
+            'create_time': self.times['create'],
+            'inputs': input_statuses,
+            'is_complete': is_complete,
+            'is_successful': is_successful,
+        }
+        return ret
+
 
     def get_flat_results(self):
         return flatten_dict(self.results)
@@ -104,13 +138,12 @@ def flatten_dict(root, prefix_keys=True):
                 ret[prefix] = v
     return ret
 
-from dashboard import LoupeDashboard
 def evaluate_category(category, limit, **kwargs):
     print 'Fetching members of category', str(category) + '...'
     cat_mems = wapiti.get_category(category, count=limit, to_zero_ns=True)
     print 'Creating Loupes for', len(cat_mems), 'articles in', str(category) + '...'
     loupes = []  # NOTE: only used in debug mode, uses a lot more ram
-    results = []
+    results = OrderedDict()
     loupe_pool = gevent.pool.Pool(kwargs.get('concurrency', DEFAULT_CONC))
 
     create_i = 0
@@ -119,8 +152,10 @@ def evaluate_category(category, limit, **kwargs):
     dash.run()
 
     def loupe_on_complete(grnlt):
-        loupe = grnlt.value
-        results.append(loupe.results)
+        loupe = grnlt
+
+        results[loupe.title] = loupe.to_dict()
+
         msg_params = {'cr_i': loupe.create_i,
                       'co_i': len(results),
                       'count': len(cat_mems),
@@ -136,7 +171,8 @@ def evaluate_category(category, limit, **kwargs):
         al = ArticleLoupe(cm.title, cm.page_id, input_pool=fancy_pool)
         create_i += 1
         al.create_i = create_i
-        loupe_pool.spawn(al.process_inputs).link(loupe_on_complete)
+        al.link(loupe_on_complete)
+        loupe_pool.start(al)
     loupe_pool.join()
 
     if kwargs.get('debug'):

@@ -1,6 +1,8 @@
 import time
 from gevent.greenlet import Greenlet
 
+class StrException(unicode): pass
+
 class Input(Greenlet):
 
     retries = 3
@@ -38,6 +40,21 @@ class Input(Greenlet):
             ret['process'] = self.times['process_end'] - self.times['process_start']
         except:
             ret['process'] = None
+        return ret
+
+    @property
+    def status(self):
+        ret = {}
+        ret['attempts'] = self.attempts
+        ret['is_complete'] = self.results is not None
+        ret['fetch_succeeded'] = self.fetch_results is not None
+        if ret['is_complete']:
+            ret['failed_stats'] = dict([ (sname, unicode(sres))
+                                         for sname, sres in self.results.iteritems()
+                                         if isinstance(sres, Exception) ])
+        else:
+            ret['failed_stats'] = {}
+        ret['is_successful'] = ret['is_complete'] and not ret['failed_stats']
         return ret
 
     def fetch(self):
