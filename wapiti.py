@@ -4,6 +4,7 @@ from gevent import monkey
 monkey.patch_all()
 
 import time
+from datetime import datetime
 import re
 import itertools
 import requests
@@ -14,6 +15,13 @@ from functools import partial
 
 from progress import ProgressMeter
 
+IS_BOT = False
+
+if IS_BOT:
+    PER_CALL_LIMIT = 5000
+else:
+    PER_CALL_LIMIT = 500
+
 API_URL = "http://en.wikipedia.org/w/api.php"
 DEFAULT_CONC     = 100
 DEFAULT_PER_CALL = 4
@@ -23,7 +31,10 @@ DEFAULT_TIMEOUT  = 15
 class WikiException(Exception): pass
 PageIdentifier = namedtuple("PageIdentifier", "page_id, ns, title")
 Page = namedtuple("Page", "title, req_title, namespace, page_id, rev_id, rev_text, is_parsed, fetch_date, fetch_duration")
+RevisionInfo = namedtuple('RevisionInfo', 'page_title, page_id, namespace, rev_id, rev_parent_id, user_text, user_id, length, time, sha1, comment, tags')
 
+def parse_timestamp(timestamp):
+    return datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%SZ')
 
 def api_req(action, params=None, raise_exc=True, **kwargs):
     all_params = {'format': 'json',
@@ -78,12 +89,12 @@ def api_req(action, params=None, raise_exc=True, **kwargs):
     return resp
 
 
-def get_category_old(cat_name, count=500, cont_str=""):
+def get_category_old(cat_name, count=PER_CALL_LIMIT, cont_str=""):
     ret = []
     if not cat_name.startswith('Category:'):
         cat_name = 'Category:' + cat_name
     while len(ret) < count and cont_str is not None:
-        cur_count = min(count - len(ret), 500)
+        cur_count = min(count - len(ret), PER_CALL_LIMIT)
         params = {'list':       'categorymembers',
                   'cmtitle':    cat_name,
                   'prop':       'info',
@@ -108,12 +119,12 @@ def get_category_old(cat_name, count=500, cont_str=""):
     return ret
 
 
-def get_category(cat_name, count=500, to_zero_ns=False, cont_str=""):
+def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, cont_str=""):
     ret = []
     if not cat_name.startswith('Category:'):
         cat_name = 'Category:' + cat_name
     while len(ret) < count and cont_str is not None:
-        cur_count = min(count - len(ret), 500)
+        cur_count = min(count - len(ret), PER_CALL_LIMIT)
         params = {'generator': 'categorymembers',
                   'gcmtitle':   cat_name,
                   'prop':       'info',
@@ -152,7 +163,7 @@ def get_category(cat_name, count=500, to_zero_ns=False, cont_str=""):
     return ret
 
 # TODO: default 'limit' to infinity/all
-def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=500, to_zero_ns=True):
+def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=PER_CALL_LIMIT, to_zero_ns=True):
     ret = []
     cont_str = ""
     params = {'generator':  'embeddedin',
@@ -176,7 +187,7 @@ def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=500, t
             namespaces_str = str(namespaces)
         params['geinamespace'] = namespaces_str
     while len(ret) < limit and cont_str is not None:
-        cur_count = min(limit - len(ret), 500)
+        cur_count = min(limit - len(ret), PER_CALL_LIMIT)
         params['geilimit']    = cur_count
         if cont_str:
             params['geicontinue'] = cont_str
@@ -258,6 +269,7 @@ def get_articles(page_ids=None, titles=None,
 
         redirects = dict([(r['to'], r['from']) for r in redirect_list])
         # this isn't perfect since multiple pages might redirect to the same page
+        fetch_end_time = time.time()
         for page in pages:
             if not page.get('pageid') or not page.get('title'):
                 continue
@@ -270,7 +282,7 @@ def get_articles(page_ids=None, titles=None,
                        rev_text = page['revisions'][0]['*'],
                        is_parsed = parsed,
                        fetch_date = fetch_start_time,
-                       fetch_duration = time.time() - fetch_start_time)
+                       fetch_duration = fetch_end_time - fetch_start_time)
             ret.append(pa)
     return ret
 
@@ -285,7 +297,7 @@ def get_talk_page(title):
 def get_backlinks(title, **kwargs):
     params = {'list': 'backlinks',
               'bltitle': title,
-              'bllimit': 500,  # TODO
+              'bllimit': PER_CALL_LIMIT,  # TODO
               'blnamespace': 0
               }
 
@@ -295,7 +307,7 @@ def get_backlinks(title, **kwargs):
 def get_langlinks(title, **kwargs):
     params = {'prop': 'langlinks',
               'titles': title,
-              'lllimit': 500,  # TODO?
+              'lllimit': PER_CALL_LIMIT,  # TODO?
               }
     query_results = api_req('query', params).results['query']['pages'].values()[0]['langlinks']
     ret = [link.get('lang') for link in query_results if link.get('lang')]
@@ -309,6 +321,68 @@ def get_feedback_stats(page_id, **kwargs):
     # no ratings entry in the json means there are no ratings. if any of the other keys are missing
     # that's an error.
     return api_req('query', params).results['query']['articlefeedback'][0].get('ratings', [])
+
+def get_revision_infos(page_title=None, page_id=None, limit=PER_CALL_LIMIT, cont_str=""):
+    ret = []
+    params = {'prop': 'revisions',
+              'rvprop': 'ids|flags|timestamp|user|userid|size|sha1|comment|tags'}
+    if page_title and page_id:
+        raise ValueError('Expected one of page_title or page_id, not both.')
+    elif page_title:
+        params['titles'] = page_title
+    elif page_id:
+        params['pageids'] = str(page_id)
+    else:
+        raise ValueError('page_title and page_id cannot both be blank.')
+
+    resps = []
+    res_count = 0
+    while res_count < limit and cont_str is not None:
+        cur_limit = min(limit - len(ret), PER_CALL_LIMIT)
+        params['rvlimit'] = cur_limit
+        if cont_str:
+            params['rvcontinue'] = cont_str
+        resp = api_req('query', params)
+        try:
+            qresp = resp.results['query']
+            resps.append(qresp)
+
+            plist = qresp['pages'].values()  # TODO: uuuugghhhhh
+            if plist and not plist[0].get('missing'):
+                res_count += len(plist[0]['revisions'])
+        except:
+            print resp.error  # log
+            raise
+        try:
+            cont_str = resp.results['query-continue']['revisions']['rvcontinue']
+        except:
+            cont_str = None
+
+    for resp in resps:
+        plist = resp['pages'].values()
+        if not plist or plist[0].get('missing'):
+            continue
+        else:
+            page_dict = plist[0]
+        page_title = page_dict['title']
+        page_id = page_dict['pageid']
+        namespace = page_dict['ns']
+
+        for rev in page_dict.get('revisions', []):
+            rev_info = RevisionInfo(page_title= page_title,
+                                    page_id   = page_id,
+                                    namespace = namespace,
+                                    rev_id    = rev['revid'],
+                                    rev_parent_id = rev['parentid'],
+                                    user_text = rev.get('user', '!userhidden'),  # user info can be oversighted
+                                    user_id = rev.get('userid', -1),
+                                    time = parse_timestamp(rev['timestamp']),
+                                    length = rev['size'],
+                                    sha1 = rev['sha1'],
+                                    comment = rev.get('comment', ''),  # comments can also be oversighted
+                                    tags = rev['tags'])
+            ret.append(rev_info)
+    return ret
 
 
 def chunked_pimap(func, iterable, concurrency=DEFAULT_CONC, chunk_size=DEFAULT_PER_CALL, **kwargs):

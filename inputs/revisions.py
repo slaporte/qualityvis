@@ -144,6 +144,9 @@ class Revisions(Input):
         ret['talk_reverted'], ret['talk_without_reverted'] = partition_reverts(ret['talk'])
         return ret
 
+    def new_fetch(self):
+        pass
+
     stats = {
         'revs_without_reverted': lambda f: all_revisions(f['article_without_reverted']),
         'revs_reverted': lambda f: all_revisions(f['article_reverted']),
