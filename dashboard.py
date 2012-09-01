@@ -1,6 +1,6 @@
 import time
 import bottle
-from bottle import Bottle, JSONPlugin, run
+from bottle import Bottle, JSONPlugin, run, template, TemplatePlugin
 
 import gevent
 from gevent.threadpool import ThreadPool
@@ -42,12 +42,12 @@ class LoupeDashboard(Bottle):
         self.start_time = kwargs.get('start_time') or time.time()
         self.start_cmd = kwargs.get('start_cmd') or ' '.join(sys.argv)
         self.host_machine = kwargs.get('hostname') or socket.gethostname()
-
         self.route('/', callback=self.render_dashboard)
-        self.route('/summary', callback=self.get_summary_dict)
+        self.route('/summary', callback=self.get_summary_dict, template='summary')
         self.route('/all_results', callback=self.get_all_results)
         self.uninstall(JSONPlugin)
         self.install(JSONPlugin(better_dumps))
+        self.install(TemplatePlugin())
 
 
     def run(self, **kwargs):
