@@ -87,7 +87,7 @@ class ArticleLoupe(Greenlet):
         try:
             ret['total'] = self.times['complete'] - self.times['create']
         except KeyError:
-            pass
+            ret['total'] = time.time() - self.times['create']
         return ret
 
     @property
@@ -114,6 +114,7 @@ class ArticleLoupe(Greenlet):
             'is_complete': is_complete,
             'is_successful': is_successful,
         }
+        ret['create_i'] = getattr(self, 'create_i', 0)
         return ret
 
 
@@ -148,7 +149,7 @@ def evaluate_category(category, limit, **kwargs):
 
     create_i = 0
 
-    dash = LoupeDashboard(loupe_pool, results)
+    dash = LoupeDashboard(loupe_pool, results, inputs=DEFAULT_INPUTS)
     dash.run()
 
     def loupe_on_complete(grnlt):
@@ -168,7 +169,7 @@ def evaluate_category(category, limit, **kwargs):
 
     fancy_pool = FancyInputPool(limits)
     for cm in cat_mems:
-        al = ArticleLoupe(cm.title, cm.page_id, input_pool=fancy_pool)
+        al = ArticleLoupe(cm.title, cm.page_id, input_pool=fancy_pool, input_classes=DEFAULT_INPUTS)
         create_i += 1
         al.create_i = create_i
         al.link(loupe_on_complete)

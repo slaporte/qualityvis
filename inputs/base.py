@@ -31,15 +31,15 @@ class Input(Greenlet):
         try:
             ret['total'] = self.times['complete'] - self.times['create']
         except:
-            ret['total'] = None
+            pass
         try:
             ret['fetch'] = self.times['fetch_end'] - self.times['fetch_start']
         except:
-            ret['fetch'] = None
+            pass
         try:
             ret['process'] = self.times['process_end'] - self.times['process_start']
         except:
-            ret['process'] = None
+            pass
         return ret
 
     @property

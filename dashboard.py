@@ -1,6 +1,7 @@
 import time
 import bottle
 from bottle import Bottle, JSONPlugin, run, template, TemplatePlugin
+from bottle import static_file
 
 import gevent
 from gevent.threadpool import ThreadPool
@@ -34,17 +35,19 @@ import sys
 import socket
 class LoupeDashboard(Bottle):
 
-    def __init__(self, loupe_pool, results, *args, **kwargs):
+    def __init__(self, loupe_pool, results, inputs=None, *args, **kwargs):
         super(LoupeDashboard, self).__init__(*args, **kwargs)
         self.loupe_pool = loupe_pool
         self.results = results
+        self.inputs = inputs
         self.tpool = None
         self.start_time = kwargs.get('start_time') or time.time()
         self.start_cmd = kwargs.get('start_cmd') or ' '.join(sys.argv)
         self.host_machine = kwargs.get('hostname') or socket.gethostname()
-        self.route('/', callback=self.render_dashboard)
+        self.route('/', callback=self.render_dashboard, template='dashboard')
         self.route('/summary', callback=self.get_summary_dict, template='summary')
         self.route('/all_results', callback=self.get_all_results)
+        self.route('/static/<filepath:path>', callback=self.serve_static)
         self.uninstall(JSONPlugin)
         self.install(JSONPlugin(better_dumps))
         self.install(TemplatePlugin())
@@ -85,6 +88,7 @@ class LoupeDashboard(Bottle):
     def get_dict(self):
         ret = {}
         ret['summary'] = self.get_summary_dict(with_meta=False)
+        ret['input_classes'] = [i.__name__ for i in self.inputs]
         ret['in_progress'] = [o.get_status() for o in self.loupe_pool]
         ret['complete'] = [o.get('status') for o in self.results.values()]
         ret['meta'] = self.get_meta_dict()
@@ -97,3 +101,8 @@ class LoupeDashboard(Bottle):
 
     def render_dashboard(self):
         return self.get_dict()
+
+    def serve_static(self, filepath):
+        from os.path import dirname
+        asset_dir = dirname(__file__)+'/assets'
+        return static_file(filepath, root=asset_dir)
