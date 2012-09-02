@@ -1,5 +1,9 @@
+%from bottle import request
+%if not request.query.get('ajax', False):
 %rebase layout
+%end
 
+<div id="content">
 <h1>Loupe</h1>
 %if in_progress:
 <h2>Articles in Progress</h2>
@@ -38,3 +42,4 @@
     </tbody>
 </table>
 %end
+</div>
