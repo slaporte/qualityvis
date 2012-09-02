@@ -17,7 +17,7 @@ import pkgutil
 
 input_mods = [importer.find_module(name).load_module(name)
               for (importer, name, _) in pkgutil.walk_packages('.')
-              if name.startswith('inputs.')]
+              if name.startswith('inputs.') and not name.startswith('inputs.base')]
 
 AVAIL_INPUTS = {}
 
@@ -52,4 +52,4 @@ def do_input(input_name, page_title='', page_id=None):
 
 if __name__ == '__main__':
     bottle.debug(True)
-    run(host='0.0.0.0', port=8700, server='gevent')
+    run(host='0.0.0.0', port=8700, server='gevent', reloader=True)

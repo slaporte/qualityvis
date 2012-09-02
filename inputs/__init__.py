@@ -12,5 +12,6 @@ from assessment import Assessment
 from langlinks import LangLinks
 from interwikilinks import InterWikiLinks
 from watchers import Watchers
+from article_history import ArticleHistory
 
-DEFAULT_INPUTS = [Backlinks, LangLinks, InterWikiLinks, FeedbackV4, DOM, GoogleNews, GoogleSearch, Wikitrust, PageViews, Revisions, Assessment, Watchers]
+DEFAULT_INPUTS = [Backlinks, LangLinks, InterWikiLinks, FeedbackV4, DOM, GoogleNews, GoogleSearch, Wikitrust, PageViews, Revisions, Assessment, Watchers, ArticleHistory]
