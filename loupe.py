@@ -146,7 +146,7 @@ def evaluate_category(category, limit, **kwargs):
     loupes = []  # NOTE: only used in debug mode, uses a lot more ram
     results = OrderedDict()
     loupe_pool = gevent.pool.Pool(kwargs.get('concurrency', DEFAULT_CONC))
-
+    loupe_pool.total_articles = len(cat_mems)
     create_i = 0
 
     dash = LoupeDashboard(loupe_pool, results, inputs=DEFAULT_INPUTS)

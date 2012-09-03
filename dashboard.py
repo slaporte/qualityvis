@@ -75,14 +75,15 @@ class LoupeDashboard(Bottle):
                 'in_progress': in_prog_times,
                 'complete_count': len(self.results),
                 'success_count': success_count,
-                'failure_count': failure_count
+                'failure_count': failure_count,
+                'total_articles': self.loupe_pool.total_articles,
                 }
         if with_meta:
             ret['meta'] = self.get_meta_dict()
         return ret
 
     def get_meta_dict(self):
-        return {'start_time': self.start_time,
+        return {'start_time': time.strftime("%d %b %Y %H:%M:%S UTC", time.gmtime(self.start_time)),
                 'start_cmd': self.start_cmd,
                 'host_machine': self.host_machine
                 }
