@@ -48,7 +48,7 @@ def do_input(input_name, page_title='', page_id=None):
     results = in_obj()
     results['durations'] = in_obj.durations
     return results
-    #return in_obj.results
+    # return in_obj.results
 
 if __name__ == '__main__':
     bottle.debug(True)

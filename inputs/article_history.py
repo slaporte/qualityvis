@@ -132,5 +132,5 @@ class ArticleHistory(Input):
         'itn_age': lambda f: age_as_str(f.get('itndate')),
         'ah_topic': lambda f: f.get('topic', None),
         'ah_current': lambda f: f.get('current', None),
-        'actions': lambda f: [{'type': action.type, 'result': action.result, 'date': str(action.date)} for action in f.get('actions')],
+        'ah_actions': lambda f: [{'type': action.type, 'result': action.result, 'date': str(action.date)} for action in f.get('actions')],
     }

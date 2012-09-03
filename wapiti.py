@@ -337,6 +337,15 @@ def get_feedback_stats(page_id, **kwargs):
     # that's an error.
     return api_req('query', params).results['query']['articlefeedback'][0].get('ratings', [])
 
+
+def get_feedbackv5_count(page_id, **kwargs):
+    params = {'list': 'articlefeedbackv5-view-feedback',
+              'afvfpageid': page_id,
+              'afvflimit': 1
+              }
+    return api_req('query', params).results['articlefeedbackv5-view-feedback']['count']
+
+
 def get_revision_infos(page_title=None, page_id=None, limit=PER_CALL_LIMIT, cont_str=""):
     ret = []
     params = {'prop': 'revisions',

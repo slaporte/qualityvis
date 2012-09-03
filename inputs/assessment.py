@@ -2,12 +2,14 @@ import wapiti
 import re
 from base import Input
 
+
 def find_tmpl(text):
     ratings = re.findall(r'\|\s*((class|currentstatus)\s*=\s*(.+?))(\b|\|)', text, re.I)
     if not ratings:
         return None
     else:
         return [rating[2] for rating in ratings]
+
 
 class Assessment(Input):
     def fetch(self):

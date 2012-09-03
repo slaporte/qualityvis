@@ -1,9 +1,8 @@
 from base import Input, get_json
 from stats import dist_stats
 from datetime import datetime, timedelta
-from itertools import chain
 from math import ceil
-from collections import Counter, OrderedDict, defaultdict
+from collections import OrderedDict, defaultdict
 
 REVERT_WINDOW = 4
 SLEUTHING_FACTOR = 10

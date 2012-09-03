@@ -1,9 +1,10 @@
 import wapiti
 from base import Input
 
+
 class FeedbackV4(Input):
     def fetch(self):
-        return wapiti.get_feedback_stats(page_id = self.page_id)
+        return wapiti.get_feedback_stats(page_id=self.page_id)
 
     stats = {
         'fb_trustworthy': lambda f: f[0]['total'] / f[0]['count'] if f[0]['count'] else 0,
@@ -16,4 +17,13 @@ class FeedbackV4(Input):
         'fb_count_wellwritten': lambda f: f[3]['count'],
         'fb_count_total': lambda f: sum([x['count'] for x in f]),
         'fb_countall_total': lambda f: sum([x['countall'] for x in f])
+    }
+
+
+class FeedbackV5(Input):
+    def fetch(self):
+        return wapiti.get_feedbackv5_count(page_id=self.page_id)
+
+    stats = {
+        'fb_comments': lambda f: f,
     }

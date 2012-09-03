@@ -30,7 +30,10 @@ def section_stats(headers):
                 else:
                     break
             totals.append((header.text_content().replace('[edit] ', ''), len(text.split())))
-    return totals
+    dists = {}
+    dists['header'] = dist_stats([len(header.split()) for header, t in totals])
+    dists['text'] = dist_stats([text for h, text in totals])
+    return dists
 
 
 def element_words_dist(elem):
@@ -55,10 +58,11 @@ class DOM(Input):
 
     def fetch(self):
         # avg process time: 0.14827052116394043 seconds
-        page = get_url('http://en.wikipedia.org/wiki/'+self.page_title.replace(' ', '_'))
+        page = get_url('http://en.wikipedia.org/wiki/' + self.page_title.replace(' ', '_'))
         ret = PyQuery(page.text).find('div#content')
         return ret
 
+    # TODO: check pyquery errors
     stats = {
         'words':       lambda f: len(f('p').text().split()),
         'p_dist':           lambda f: dist_stats(paragraph_counts(f)),
@@ -87,7 +91,7 @@ class DOM(Input):
         'geo': lambda f: len(f('.geo-dms')),
         'blockquote': lambda f: len(f('blockquote')),
         'related_section_links': lambda f: len(f('.rellink')),
-        'metadata_links': lambda f:len(f('.metadata.plainlinks')), # Commons related media
+        'metadata_links': lambda f: len(f('.metadata.plainlinks')),  # Commons related media
         'spoken_wp': lambda f: len(f('#section_SpokenWikipedia')),
         'wikitable_dist': element_words_dist('table.wikitable'),
         'templ_delete': lambda f: len(f('.ambox-delete')),
@@ -129,8 +133,8 @@ class DOM(Input):
         'templ_update': lambda f: len(f('.ambox-Update')),
         'templ_wikify': lambda f: len(f('.ambox-Wikify')),
         'templ_multiple_issues': lambda f: len(f('.ambox-multiple_issues li')),
-        'h2': lambda f: section_stats(f('h2')),
-        'h3': lambda f: section_stats(f('h3')),
-        'h4': lambda f: section_stats(f('h4')),
-        'h5': lambda f: section_stats(f('h5')),
+        'h2_dist': lambda f: section_stats(f('h2')),
+        'h3_dist': lambda f: section_stats(f('h3')),
+        'h4_dist': lambda f: section_stats(f('h4')),
+        'h5_dist': lambda f: section_stats(f('h5')),
     }

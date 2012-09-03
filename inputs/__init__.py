@@ -2,6 +2,7 @@ from base import Input, get_json, get_url
 
 from backlinks import Backlinks
 from feedback import FeedbackV4
+from feedback import FeedbackV5
 from dom import DOM
 from google import GoogleNews
 from google import GoogleSearch
@@ -14,4 +15,4 @@ from interwikilinks import InterWikiLinks
 from watchers import Watchers
 from article_history import ArticleHistory
 
-DEFAULT_INPUTS = [Backlinks, LangLinks, InterWikiLinks, FeedbackV4, DOM, GoogleNews, GoogleSearch, Wikitrust, PageViews, Revisions, Assessment, Watchers, ArticleHistory]
+DEFAULT_INPUTS = [Backlinks, LangLinks, InterWikiLinks, FeedbackV4, FeedbackV5, DOM, GoogleNews, GoogleSearch, Wikitrust, PageViews, Revisions, Assessment, Watchers, ArticleHistory]
