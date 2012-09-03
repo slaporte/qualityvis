@@ -3,8 +3,9 @@
 %rebase layout
 %end
 
-<div id="content">
 <h1>Loupe</h1>
+<p><input id="autorefresh" name="autorefresh" type="checkbox" /> <label for="autorefresh">Auto-update</label></p>
+<div id="content">
 %if in_progress:
 <h2>Articles in Progress</h2>
 <table id="in-prog-table">
