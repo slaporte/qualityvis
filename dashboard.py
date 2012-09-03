@@ -1,7 +1,9 @@
 import time
 import bottle
-from bottle import Bottle, JSONPlugin, run, template, TemplatePlugin
+from bottle import Bottle, JSONPlugin, run, TemplatePlugin
 from bottle import static_file
+import sys
+import socket
 
 import gevent
 from gevent.threadpool import ThreadPool
@@ -16,7 +18,6 @@ DEFAULT_SERVER = 'gevent'
 
 
 def find_port(host=DEFAULT_HOST, start_port=DEFAULT_PORT, end_port=None):
-    import socket
     start_port = int(start_port)
     end_port = end_port or start_port + 100
     for p in range(start_port, end_port):
@@ -31,8 +32,8 @@ def find_port(host=DEFAULT_HOST, start_port=DEFAULT_PORT, end_port=None):
     return None
 
 # TODO: add ortellius load to meta
-import sys
-import socket
+
+
 class LoupeDashboard(Bottle):
 
     def __init__(self, loupe_pool, results, inputs=None, *args, **kwargs):
@@ -52,7 +53,6 @@ class LoupeDashboard(Bottle):
         self.install(JSONPlugin(better_dumps))
         self.install(TemplatePlugin())
 
-
     def run(self, **kwargs):
         if self.tpool is None:
             self.tpool = ThreadPool(2)
@@ -70,20 +70,22 @@ class LoupeDashboard(Bottle):
         cur_time = time.time()
         success_count = len([o for o in self.results.values() if o.get('is_successful')])
         failure_count = len(self.results) - success_count
-        in_prog_times = dict([ (o.title, cur_time - o.times['create']) for o in self.loupe_pool ])
-        ret =  {'in_progress_count': len(self.loupe_pool),
+        in_prog_times = dict([(o.title, cur_time - o.times['create']) for o in self.loupe_pool])
+        ret = {'in_progress_count': len(self.loupe_pool),
                 'in_progress': in_prog_times,
                 'complete_count': len(self.results),
                 'success_count': success_count,
-                'failure_count': failure_count }
+                'failure_count': failure_count
+                }
         if with_meta:
             ret['meta'] = self.get_meta_dict()
         return ret
 
     def get_meta_dict(self):
-        return { 'start_time': self.start_time,
-                 'start_cmd': self.start_cmd,
-                 'host_machine': self.host_machine }
+        return {'start_time': self.start_time,
+                'start_cmd': self.start_cmd,
+                'host_machine': self.host_machine
+                }
 
     def get_dict(self):
         ret = {}
@@ -104,5 +106,5 @@ class LoupeDashboard(Bottle):
 
     def serve_static(self, filepath):
         from os.path import dirname
-        asset_dir = dirname(__file__)+'/assets'
+        asset_dir = dirname(__file__) + '/assets'
         return static_file(filepath, root=asset_dir)
