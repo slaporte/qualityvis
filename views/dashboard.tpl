@@ -98,3 +98,31 @@
         %end
     </tbody>
 </table>
+
+<h2>Stat failures</h2>
+%total_errs = len(failed_stats)
+<p class="infos">We have <span class="info">{{total_errs}}</span> types of stat failures.</p>
+<table id="failure-table">
+    <thead>
+        <th>Input</th>
+        <th>Stat</th>
+        <th>Error</th>
+        <th>Total</th>
+        <th>Fail rate</th>
+        <th>Example</th>
+    </thead>
+    <tbody>
+        %for (failed_stat, f_titles) in failed_stats.iteritems():
+        <tr>
+            <td class='label'>{{failed_stat[0]}}</td>
+            <td class='label'>{{failed_stat[1]}}</td>
+            <td class='text'>{{failed_stat[2]}}</td>
+            <td>{{len(f_titles)}}</td>
+            <td>{{round(len(f_titles) / float(total), 2) * 100}}%</td>
+            <td><a href='https://en.wikipedia.org/wiki/{{f_titles[0].replace(' ', '_')}}'>{{f_titles[0]}}</a></td>
+        </tr>
+        %end
+    </tbody>
+</table>
+
+<h2>Fetch failures</h2>
