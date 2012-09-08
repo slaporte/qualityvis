@@ -51,7 +51,7 @@
 </table>
 %end
 <h2>Completion</h2>
-%total = summary['complete_count']
+%total = float(summary['complete_count'])
 <p class="infos">We have completed <span class="info">{{total}} loupes</span>.</p>
 <table id="inputs-table">
     <thead>

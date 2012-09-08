@@ -152,15 +152,16 @@ def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, cont_str=""):
                 title = cm['title']
                 page_id = cm['pageid']
 
-            ret.append(PageIdentifier(title = title,
-                                      page_id = page_id,
-                                      ns = namespace))
+            ret.append(PageIdentifier(title=title,
+                                      page_id=page_id,
+                                      ns=namespace))
         try:
             cont_str = resp.results['query-continue']['categorymembers']['gcmcontinue']
         except:
             cont_str = None
 
     return ret
+
 
 # TODO: default 'limit' to infinity/all
 def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=PER_CALL_LIMIT, to_zero_ns=True):
@@ -286,6 +287,7 @@ def get_articles(page_ids=None, titles=None,
             ret.append(pa)
     return ret
 
+
 def get_talk_page(title):
     params = {'prop': 'revisions',
               'titles': 'Talk:' + title,
@@ -294,14 +296,25 @@ def get_talk_page(title):
     return api_req('query', params).results['query']['pages'].values()[0]['revisions'][0]['*']
 
 
-def get_backlinks(title, **kwargs):
-    params = {'list': 'backlinks',
-              'bltitle': title,
-              'bllimit': PER_CALL_LIMIT,  # TODO
-              'blnamespace': 0
-              }
-
-    return api_req('query', params).results['query']['backlinks']
+def get_backlinks(title, count=PER_CALL_LIMIT, cont_str='', **kwargs):
+    ret = []
+    while len(ret) < count and cont_str is not None:
+        cur_count = min(count - len(ret), PER_CALL_LIMIT)
+        params = {'list': 'backlinks',
+                  'bltitle': title,
+                  'blnamespace': 0,
+                  'bllimit': cur_count
+                  }
+        if cont_str:
+            params['blcontinue'] = cont_str
+        resp = api_req('query', params)
+        for link in resp.results['query']['backlinks']:
+            ret.append(resp.results['query']['backlinks'])
+        try:
+            cont_str = resp.results['query-continue']['backlinks']['blcontinue']
+        except:
+            cont_str = None
+    return ret
 
 
 def get_langlinks(title, **kwargs):
