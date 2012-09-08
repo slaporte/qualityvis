@@ -40,7 +40,7 @@ var DASH = (function ($) {
     };
 
     DASH.start_reload = function start_reload(rate) {
-        var rate = rate || 221;
+        rate = rate || 221;
         DASH.ajax_refresh('', '', rate);
     };
     return DASH;
