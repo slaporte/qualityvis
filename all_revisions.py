@@ -25,36 +25,52 @@ DESIRED_PROPS = ["rev_sha1", "rev_len", "rev_timestamp", "rev_minor_edit", "rev_
 class ArticleHistory(object):
     '''article history object'''
     def __init__(self, title, namespace=0):
-        db = oursql.connect(db='enwiki_p',
-            host="enwiki-p.rrdb.toolserver.org",
-            read_default_file=os.path.expanduser("~/.my.cnf"))
-        cursor = db.cursor(oursql.DictCursor)
-        s_time = time.time()
-        cursor.execute(u'''
-            SELECT      {}
-            FROM        revision
-            INNER JOIN  page ON revision.rev_page = page.page_id
-            WHERE       page_title = ? AND page.page_namespace = ?;
-            '''.format(', '.join(DESIRED_PROPS)), (title, namespace))
-        self.revisions = cursor.fetchall()
-        self.dur = time.time() - s_time
+        try:
+            s_time = time.time()
+            db = oursql.connect(db='enwiki_p',
+                host="enwiki-p.rrdb.toolserver.org",
+                read_default_file=os.path.expanduser("~/.my.cnf"))
+        except oursql.ProgrammingError as (error_number, error_str, donno):
+            print str(error_number) + ':  ' + error_str
+            self.revisions = {'error': error_str}
+            self.dur = time.time() - s_time
+        except:
+            raise
+        else:
+            cursor = db.cursor(oursql.DictCursor)
+            cursor.execute(u'''
+                SELECT      {}
+                FROM        revision
+                INNER JOIN  page ON revision.rev_page = page.page_id
+                WHERE       page_title = ? AND page.page_namespace = ?;
+                '''.format(', '.join(DESIRED_PROPS)), (title, namespace))
+            self.revisions = cursor.fetchall()
+            self.dur = time.time() - s_time
 
 
 class WL(object):
     '''article history object'''
     def __init__(self, title, namespace=0):
-        db = oursql.connect(db='enwiki_p',
-            host="enwiki-p.rrdb.toolserver.org",
-            read_default_file=os.path.expanduser("~/.my.cnf"))
-        cursor = db.cursor(oursql.DictCursor)
-        s_time = time.time()
-        cursor.execute(u'''
-            SELECT      count(ts_wl_user_touched_cropped)
-            FROM        watchlist
-            WHERE       wl_title = ? AND wl_namespace = ?;
-            '''.format(', '.join(DESIRED_PROPS)), (title, namespace))
-        self.wers = cursor.fetchall()
-        self.dur = time.time() - s_time
+        try:
+            s_time = time.time()
+            db = oursql.connect(db='enwiki_p',
+                host="enwiki-p.rrdb.toolserver.org",
+                read_default_file=os.path.expanduser("~/.my.cnf"))
+            cursor = db.cursor(oursql.DictCursor)
+        except oursql.ProgrammingError as (error_number, error_str, donno):
+            print str(error_number) + ':  ' + error_str
+            self.revisions = {'error': error_str}
+            self.dur = time.time() - s_time
+        except:
+            raise
+        else:
+            cursor.execute(u'''
+                SELECT      count(ts_wl_user_touched_cropped)
+                FROM        watchlist
+                WHERE       wl_title = ? AND wl_namespace = ?;
+                ''', (title, namespace))
+            self.wers = cursor.fetchall()
+            self.dur = time.time() - s_time
 
 
 @route('/revisions/<title:path>')
