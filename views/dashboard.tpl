@@ -3,14 +3,14 @@
 %rebase layout
 %end
 
-<h1>Loupe Dashboad</h1>
+<h1>Loupe Dashboat</h1>
 <p><input id="autorefresh" name="autorefresh" type="checkbox" /> <label for="autorefresh">Auto-update</label></p>
+<div id="content">
 <h2>Summary</h2>
 <p class="infos">Run started on <span class="info">{{meta['host_machine']}}</span> at <span class="info">{{meta['start_time']}}</span> via <span class="info">{{meta['start_cmd']}}</span>.
-<div id="content">
 %if summary['total_articles']:
     %completion = str(round(summary['complete_count'] / float(summary['total_articles']), 4) * 100) + '%'
-    <p class="infos">Currently <span class="info">{{completion}}</span> complete.</p>
+    <p class="infos">Currently <span class="info">{{completion}}</span> complete in {{meta['duration']}}s.</p>
 %end
 %if in_progress:
 <h2>Articles in Progress</h2>
