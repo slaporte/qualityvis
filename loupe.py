@@ -10,7 +10,7 @@ import wapiti
 
 DEFAULT_CAT = "Featured articles that have appeared on the main page"
 DEFAULT_LIMIT = 100
-DEFAULT_CONC  = 20
+DEFAULT_CONC = 20
 DEFAULT_PER_CALL = 1  # TODO: make a configurable dictionary of chunk sizes
 DEFAULT_TIMEOUT = 30
 ALL = 20000
@@ -48,8 +48,8 @@ class ArticleLoupe(Greenlet):
         self.page_id = page_id
         if input_classes is None:
             input_classes = DEFAULT_INPUTS
-        self.inputs = [i(title   = self.title,
-                         page_id = self.page_id) for i in input_classes]
+        self.inputs = [i(title=self.title,
+                         page_id=self.page_id) for i in input_classes]
         if input_pool is None:
             input_pool = gevent.pool.Pool()
         self.input_pool = input_pool
@@ -102,9 +102,9 @@ class ArticleLoupe(Greenlet):
         return ret
 
     def get_status(self):
-        input_statuses = dict([ (i.class_name, i.status) for i in self.inputs ])
-        is_complete = all([ i['is_complete'] for i in input_statuses.itervalues() ])
-        is_successful = all([ i['is_successful'] for i in input_statuses.itervalues() ])
+        input_statuses = dict([(i.class_name, i.status) for i in self.inputs])
+        is_complete = all([i['is_complete'] for i in input_statuses.itervalues()])
+        is_successful = all([i['is_successful'] for i in input_statuses.itervalues()])
         ret = {
             'durations': self.durations,
             'page_id': self.page_id,
@@ -116,7 +116,6 @@ class ArticleLoupe(Greenlet):
         }
         ret['create_i'] = getattr(self, 'create_i', 0)
         return ret
-
 
     def get_flat_results(self):
         return flatten_dict(self.results)
@@ -139,6 +138,7 @@ def flatten_dict(root, prefix_keys=True):
                 ret[prefix] = v
     return ret
 
+
 def evaluate_category(category, limit, **kwargs):
     print 'Fetching members of category', str(category) + '...'
     cat_mems = wapiti.get_category(category, count=limit, to_zero_ns=True)
@@ -146,10 +146,10 @@ def evaluate_category(category, limit, **kwargs):
     loupes = []  # NOTE: only used in debug mode, uses a lot more ram
     results = OrderedDict()
     loupe_pool = gevent.pool.Pool(kwargs.get('concurrency', DEFAULT_CONC))
-
+    loupe_pool.total_articles = len(cat_mems)
     create_i = 0
-
-    dash = LoupeDashboard(loupe_pool, results, inputs=DEFAULT_INPUTS)
+    failed_stats = {}
+    dash = LoupeDashboard(loupe_pool, results, inputs=DEFAULT_INPUTS, failed_stats=failed_stats)
     dash.run()
 
     def loupe_on_complete(grnlt):
@@ -163,6 +163,13 @@ def evaluate_category(category, limit, **kwargs):
                       'title': loupe.title,
                       'dur': time.time() - loupe.times['create']}
         log_msg = u'#{co_i}/{count} (#{cr_i}) "{title}" took {dur:.4f} seconds'.format(**msg_params)
+        for inpt in loupe.inputs:
+            for stat in inpt.status.get('failed_stats'):
+                stat_failure = (inpt.class_name, stat, str(loupe.results[stat]))
+                if failed_stats.get(stat_failure):
+                    failed_stats[stat_failure].append(loupe.title)
+                else:
+                    failed_stats[stat_failure] = [loupe.title]
         print log_msg
         if kwargs.get('debug'):
             loupes.append(loupe)
@@ -181,6 +188,7 @@ def evaluate_category(category, limit, **kwargs):
 
 # check for errors:
 # [al.title for al in loupes if any([isinstance(r, Exception) for r in al.results.values()])]
+
 
 def parse_args():
     parser = OptionParser()

@@ -36,7 +36,7 @@ def find_port(host=DEFAULT_HOST, start_port=DEFAULT_PORT, end_port=None):
 
 class LoupeDashboard(Bottle):
 
-    def __init__(self, loupe_pool, results, inputs=None, *args, **kwargs):
+    def __init__(self, loupe_pool, results, inputs=None, failed_stats=None, *args, **kwargs):
         super(LoupeDashboard, self).__init__(*args, **kwargs)
         self.loupe_pool = loupe_pool
         self.results = results
@@ -45,6 +45,7 @@ class LoupeDashboard(Bottle):
         self.start_time = kwargs.get('start_time') or time.time()
         self.start_cmd = kwargs.get('start_cmd') or ' '.join(sys.argv)
         self.host_machine = kwargs.get('hostname') or socket.gethostname()
+        self.failed_stats = failed_stats
         self.route('/', callback=self.render_dashboard, template='dashboard')
         self.route('/summary', callback=self.get_summary_dict, template='summary')
         self.route('/all_results', callback=self.get_all_results)
@@ -75,14 +76,15 @@ class LoupeDashboard(Bottle):
                 'in_progress': in_prog_times,
                 'complete_count': len(self.results),
                 'success_count': success_count,
-                'failure_count': failure_count
+                'failure_count': failure_count,
+                'total_articles': self.loupe_pool.total_articles,
                 }
         if with_meta:
             ret['meta'] = self.get_meta_dict()
         return ret
 
     def get_meta_dict(self):
-        return {'start_time': self.start_time,
+        return {'start_time': time.strftime("%d %b %Y %H:%M:%S UTC", time.gmtime(self.start_time)),
                 'start_cmd': self.start_cmd,
                 'host_machine': self.host_machine
                 }
@@ -94,6 +96,7 @@ class LoupeDashboard(Bottle):
         ret['in_progress'] = [o.get_status() for o in self.loupe_pool]
         ret['complete'] = [o.get('status') for o in self.results.values()]
         ret['meta'] = self.get_meta_dict()
+        ret['failed_stats'] = self.failed_stats
         return ret
 
     def get_all_results(self):

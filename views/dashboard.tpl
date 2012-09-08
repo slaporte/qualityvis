@@ -3,16 +3,23 @@
 %rebase layout
 %end
 
-<h1>Loupe</h1>
+<h1>Loupe Dashboad</h1>
 <p><input id="autorefresh" name="autorefresh" type="checkbox" /> <label for="autorefresh">Auto-update</label></p>
+<h2>Summary</h2>
+<p class="infos">Run started on <span class="info">{{meta['host_machine']}}</span> at <span class="info">{{meta['start_time']}}</span> via <span class="info">{{meta['start_cmd']}}</span>.
 <div id="content">
+%if summary['total_articles']:
+    %completion = str(round(summary['complete_count'] / float(summary['total_articles']), 4) * 100) + '%'
+    <p class="infos">Currently <span class="info">{{completion}}</span> complete.</p>
+%end
 %if in_progress:
 <h2>Articles in Progress</h2>
+<p class="infos">There are <span class="info">{{summary['in_progress_count']}} loupes</span> in progress.</p>
 <table id="in-prog-table">
     <thead>
         <th>#</th>
         <th>Article</th>
-        <th>Tot time</th>
+        <th>Total</th>
         %for i_name in input_classes:
         <th>{{i_name}}</th>
         %end
@@ -44,8 +51,8 @@
 </table>
 %end
 <h2>Completion</h2>
-%total = len([input['title'] for input in complete])
-<p>Total loupes completed: {{total}}</p>
+%total = float(summary['complete_count'])
+<p class="infos">We have completed <span class="info">{{total}} loupes</span>.</p>
 <table id="inputs-table">
     <thead>
         <th>Input name</th>
@@ -91,3 +98,31 @@
         %end
     </tbody>
 </table>
+
+<h2>Stat failures</h2>
+%total_errs = len(failed_stats)
+<p class="infos">We have <span class="info">{{total_errs}}</span> types of stat failures.</p>
+<table id="failure-table">
+    <thead>
+        <th>Input</th>
+        <th>Stat</th>
+        <th>Error</th>
+        <th>Total</th>
+        <th>Fail rate</th>
+        <th>Example</th>
+    </thead>
+    <tbody>
+        %for (failed_stat, f_titles) in failed_stats.iteritems():
+        <tr>
+            <td class='label'>{{failed_stat[0]}}</td>
+            <td class='label'>{{failed_stat[1]}}</td>
+            <td class='text'>{{failed_stat[2]}}</td>
+            <td>{{len(f_titles)}}</td>
+            <td>{{round(len(f_titles) / float(total), 2) * 100}}%</td>
+            <td><a href='https://en.wikipedia.org/wiki/{{f_titles[0].replace(' ', '_')}}'>{{f_titles[0]}}</a></td>
+        </tr>
+        %end
+    </tbody>
+</table>
+
+<h2>Fetch failures</h2>

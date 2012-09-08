@@ -26,7 +26,7 @@ API_URL = "http://en.wikipedia.org/w/api.php"
 DEFAULT_CONC     = 100
 DEFAULT_PER_CALL = 4
 DEFAULT_TIMEOUT  = 15
-
+DEFAULT_HEADERS = { 'User-Agent': 'Loupe/0.0.0 Mahmoud Hashemi makuro@gmail.com' }
 
 class WikiException(Exception): pass
 PageIdentifier = namedtuple("PageIdentifier", "page_id, ns, title")
@@ -36,7 +36,121 @@ RevisionInfo = namedtuple('RevisionInfo', 'page_title, page_id, namespace, rev_i
 def parse_timestamp(timestamp):
     return datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%SZ')
 
+import urllib
+import urllib2
+import socket
+socket.setdefaulttimeout(DEFAULT_TIMEOUT)
+from StringIO import StringIO
+import gzip
+
+class FakeResponse(object): pass
+def fake_requests(url, params=None, headers=None, use_gzip=True):
+    ret = FakeResponse()
+    full_url = url
+    try:
+        if params:
+            url_vals = encode_url_params(params)
+            full_url = url + '?' + url_vals
+    except:
+        pass
+
+    if not headers:
+        headers = DEFAULT_HEADERS
+    if use_gzip and not headers.get('Accept-encoding'):
+        headers['Accept-encoding'] = 'gzip'
+
+    req = requests.Request(url, params=params, headers=headers, method='GET', prefetch=False)
+    full_url = req.full_url  # oh lawd, usin requests to create the url for now
+        
+    req = urllib2.Request(full_url, headers=headers)
+    resp = urllib2.urlopen(req)
+    resp_text = resp.read()
+    
+    if resp.info().get('Content-Encoding') == 'gzip':
+        comp_resp_text = resp_text
+        buf = StringIO(comp_resp_text)
+        f = gzip.GzipFile(fileobj=buf)
+        resp_text = f.read()
+    
+    ret.text = resp_text
+    ret.status_code = resp.getcode()
+    ret.headers = resp.headers
+    
+    return ret
+
+
+def get_url(url, params=None, raise_exc=True):
+    resp = FakeResponse()
+    try:
+        resp = fake_requests(url, params)
+    except Exception as e:
+        if raise_exc:
+            raise
+        else:
+            resp.error = e
+    return resp
+
+def get_json(*args, **kwargs):
+    import json
+    resp = get_url(*args, **kwargs)
+    return json.loads(resp.text)
+
+
 def api_req(action, params=None, raise_exc=True, **kwargs):
+    all_params = {'format': 'json',
+                  'servedby': 'true'}
+    all_params.update(kwargs)
+    all_params.update(params)
+    all_params['action'] = action
+
+    headers = {'accept-encoding': 'gzip'}
+
+    resp = FakeResponse()
+    resp.results = None
+    try:
+        if action == 'edit':
+            #TODO
+            resp = requests.post(API_URL, params=all_params, headers=headers, timeout=DEFAULT_TIMEOUT)
+        else:
+            resp = fake_requests(API_URL, all_params)
+
+    except Exception as e:
+        if raise_exc:
+            raise
+        else:
+            resp.error = e
+            resp.results = None
+            return resp
+
+    try:
+        resp.results = json.loads(resp.text)
+        resp.servedby = resp.results.get('servedby')
+        # TODO: warnings?
+    except Exception as e:
+        if raise_exc:
+            raise
+        else:
+            resp.error = e
+            resp.results = None
+            resp.servedby = None
+            return resp
+
+    mw_error = resp.headers.getheader('MediaWiki-API-Error')
+    if mw_error:
+        error_str = mw_error
+        error_obj = resp.results.get('error')
+        if error_obj and error_obj.get('info'):
+            error_str += ' ' + error_obj.get('info')
+        if raise_exc:
+            raise WikiException(error_str)
+        else:
+            resp.error = error_str
+            return resp
+
+    return resp
+
+
+def api_req_old(action, params=None, raise_exc=True, **kwargs):
     all_params = {'format': 'json',
                   'servedby': 'true'}
     all_params.update(kwargs)
@@ -152,15 +266,16 @@ def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, cont_str=""):
                 title = cm['title']
                 page_id = cm['pageid']
 
-            ret.append(PageIdentifier(title = title,
-                                      page_id = page_id,
-                                      ns = namespace))
+            ret.append(PageIdentifier(title=title,
+                                      page_id=page_id,
+                                      ns=namespace))
         try:
             cont_str = resp.results['query-continue']['categorymembers']['gcmcontinue']
         except:
             cont_str = None
 
     return ret
+
 
 # TODO: default 'limit' to infinity/all
 def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=PER_CALL_LIMIT, to_zero_ns=True):
@@ -286,6 +401,7 @@ def get_articles(page_ids=None, titles=None,
             ret.append(pa)
     return ret
 
+
 def get_talk_page(title):
     params = {'prop': 'revisions',
               'titles': 'Talk:' + title,
@@ -294,14 +410,25 @@ def get_talk_page(title):
     return api_req('query', params).results['query']['pages'].values()[0]['revisions'][0]['*']
 
 
-def get_backlinks(title, **kwargs):
-    params = {'list': 'backlinks',
-              'bltitle': title,
-              'bllimit': PER_CALL_LIMIT,  # TODO
-              'blnamespace': 0
-              }
-
-    return api_req('query', params).results['query']['backlinks']
+def get_backlinks(title, count=PER_CALL_LIMIT, cont_str='', **kwargs):
+    ret = []
+    while len(ret) < count and cont_str is not None:
+        cur_count = min(count - len(ret), PER_CALL_LIMIT)
+        params = {'list': 'backlinks',
+                  'bltitle': title,
+                  'blnamespace': 0,
+                  'bllimit': cur_count
+                  }
+        if cont_str:
+            params['blcontinue'] = cont_str
+        resp = api_req('query', params)
+        for link in resp.results['query']['backlinks']:
+            ret.append(resp.results['query']['backlinks'])
+        try:
+            cont_str = resp.results['query-continue']['backlinks']['blcontinue']
+        except:
+            cont_str = None
+    return ret
 
 
 def get_langlinks(title, **kwargs):

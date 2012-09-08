@@ -1,4 +1,5 @@
-from base import Input, get_url
+from base import Input
+from wapiti import get_url
 
 class Wikitrust(Input):
     def fetch(self):

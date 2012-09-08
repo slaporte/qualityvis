@@ -6,6 +6,8 @@ def mean(vals):
 
 
 def median(vals):
+    if not vals:
+        return 0
     copy = sorted(vals)
     size = len(vals)
     if size % 2 == 1:
