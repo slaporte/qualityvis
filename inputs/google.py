@@ -1,4 +1,5 @@
-from base import Input, get_json
+from base import Input
+from wapiti import get_json
 
 class GoogleNews(Input):
     def fetch(self):

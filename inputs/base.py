@@ -81,7 +81,7 @@ class Input(Greenlet):
             try:
                 self.fetch_results = self.fetch()
             except Exception as e:
-                e_msg = "Fetch failed on {i_t} input for article {p_t} ({p_id}) with exception {e}"
+                e_msg = u"Fetch failed on {i_t} input for article {p_t} ({p_id}) with exception {e}"
                 e_msg = e_msg.format(p_t=self.page_title, p_id=self.page_id, i_t=self.class_name, e=repr(e))
                 print e_msg
             else:
@@ -102,23 +102,3 @@ class Input(Greenlet):
 class WikipediaInput(Input):
     pass
 
-def get_url(url, params=None, raise_exc=True):
-    import requests
-    if params is None:
-        params = {}
-    headers = {'accept-encoding': 'gzip'}
-    resp = requests.Response()
-    try:
-        resp = requests.get(url, params=params, headers=headers, timeout=15)
-    except Exception as e:
-        if raise_exc:
-            raise
-        else:
-            resp.error = e
-    return resp
-
-
-def get_json(*args, **kwargs):
-    import json
-    resp = get_url(*args, **kwargs)
-    return json.loads(resp.text)
