@@ -17,13 +17,18 @@ var DASH = (function ($) {
         div_selector = div_selector || '#content';
         url = url || document.URL;
         repeat_delay = repeat_delay || null;
-        $(div_selector).load(document.URL + ' ' + div_selector, function() {
-            if (repeat_delay) {
-                if ($('#autorefresh').is(':checked')){
-                    DASH['reload'] = setTimeout(function() { ajax_refresh(div_selector, url, repeat_delay); }, repeat_delay);
-                } else {
-                    // hmmm, sometimes it doesn't respond to my click... this should stop it
-                    clearTimeout(DASH['reload']);
+        $(div_selector).load(document.URL + ' ' + div_selector, function(res, status, xhr) {
+            if (status != 'success') {
+                clearTimeout(DASH['reload']);
+                $('#autorefresh').prop('checked', false);
+            } else {
+                if (repeat_delay) {
+                    if ($('#autorefresh').is(':checked')){
+                        DASH['reload'] = setTimeout(function() { ajax_refresh(div_selector, url, repeat_delay); }, repeat_delay);
+                    } else {
+                        // hmmm, sometimes it doesn't respond to my click... this should stop it
+                        clearTimeout(DASH['reload']);
+                    }
                 }
             }
         });
