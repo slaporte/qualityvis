@@ -1,6 +1,10 @@
-%from bottle import request
-%if not request.query.get('ajax', False):
-%rebase layout
+%try:
+    %from bottle import request
+    %if not request.query.get('ajax', False):
+        %rebase layout
+    %end
+%except Exception:
+    %rebase layout
 %end
 
 <h1>Loupe Dashboard</h1>

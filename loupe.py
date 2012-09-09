@@ -1,10 +1,12 @@
+import gevent
+from gevent import monkey
+monkey.patch_all()
+from gevent.greenlet import Greenlet
+
 from optparse import OptionParser
 import logging
 import time
 from collections import OrderedDict
-
-import gevent
-from gevent.greenlet import Greenlet
 
 import wapiti
 
