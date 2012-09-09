@@ -3,14 +3,14 @@
 %rebase layout
 %end
 
-<h1>Loupe Dashboat</h1>
+<h1>Loupe Dashboard</h1>
 <p><input id="autorefresh" name="autorefresh" type="checkbox" /> <label for="autorefresh">Auto-update</label></p>
 <div id="content">
 <h2>Summary</h2>
 <p class="infos">Run started on <span class="info">{{meta['host_machine']}}</span> at <span class="info">{{meta['start_time']}}</span> via <span class="info">{{meta['start_cmd']}}</span>.
 %if summary['total_articles']:
     %completion = str(round(summary['complete_count'] / float(summary['total_articles']), 4) * 100) + '%'
-    <p class="infos">Currently <span class="info">{{completion}}</span> complete in {{meta['duration']}}s.</p>
+    <p class="infos">Currently <span class="info">{{completion}}</span> complete.</p>
 %end
 %if in_progress:
 <h2>Articles in Progress</h2>
@@ -52,7 +52,13 @@
 %end
 <h2>Completion</h2>
 %total = float(summary['complete_count'])
-<p class="infos">We have completed <span class="info">{{total}} loupes</span>.</p>
+%formatted_dur = "{:.2f}".format(meta['duration'])
+%if total > 0:
+    %sec_per_loupe = round(meta['duration']/total, 3)
+%else:
+    %sec_per_loupe = '?'
+%end
+<p class="infos">We have completed <span class="info">{{total}} loupes</span> in <span class="info">{{formatted_dur}}s</span> (<span class="info">{{sec_per_loupe}}</span> sec/loupe).</p>
 <table id="inputs-table">
     <thead>
         <th>Input name</th>
@@ -81,7 +87,7 @@
             %end
             %proc_times = [time['durations'].get(i_name, {}).get('process') for time in complete if time['durations'].get(i_name, {}).get('process')]
             %if len(proc_times):
-                %av_proc = round(sum(proc_times) / len(proc_times), 5)
+                %av_proc = round(sum(proc_times) / len(proc_times), 3)
             %else:
                 %av_proc = '?'
             %end
