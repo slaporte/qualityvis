@@ -126,7 +126,7 @@
         %for i_name in input_classes:
         <tr>
             <td class='label'>{{i_name}}</td>
-            %total_times = [time['durations'].get(i_name, {}).get('total') for time in complete if time['durations'].get(i_name, {}).get('total')]
+            %total_times = [time['durations'].get(i_name, {}).get('total') for time in complete if time.get('durations', {}).get(i_name, {}).get('total')]
             %if len(total_times):
                 %av_total = round(sum(total_times) / len(total_times), 1)
                 %max_total = round(max(total_times), 1)
@@ -159,7 +159,7 @@
         %end
     </tbody>
 </table>
-
+%if total:
 <h2>Stat failures</h2>
 %total_errs = len(failed_stats)
 <p class="infos">We have <span class="info">{{total_errs}}</span> types of stat failures.</p>
@@ -185,7 +185,7 @@
         %end
     </tbody>
 </table>
-
+%end
 <h2>Fetch failures</h2>
 %fetch_errs = len(fetch_failures)
 <p class="infos">We have <span class="info">{{fetch_errs}}</span> articles with fetch failures.</p>

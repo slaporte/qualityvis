@@ -6,8 +6,9 @@ from gevent.greenlet import Greenlet
 from optparse import OptionParser
 import logging
 import time
+import codecs
 from collections import OrderedDict, defaultdict
-
+import json
 import wapiti
 
 DEFAULT_CAT = "Featured articles that have appeared on the main page"
@@ -142,7 +143,8 @@ def flatten_dict(root, prefix_keys=True):
     return ret
 
 
-def evaluate_category(category, limit, **kwargs):
+def evaluate_category(category, limit, output_file, **kwargs):
+    file_name = output_file.name.partition('.')[0]
     print 'Fetching members of category', str(category) + '...'
     cat_mems = wapiti.get_category(category, count=limit, to_zero_ns=True)
     print 'Creating Loupes for', len(cat_mems), 'articles in', str(category) + '...'
@@ -158,9 +160,7 @@ def evaluate_category(category, limit, **kwargs):
 
     def loupe_on_complete(grnlt):
         loupe = grnlt
-
         results[loupe.title] = loupe.to_dict()
-
         msg_params = {'cr_i': loupe.create_i,
                       'co_i': len(results),
                       'count': len(cat_mems),
@@ -175,6 +175,13 @@ def evaluate_category(category, limit, **kwargs):
                 stat_failure = (inpt.class_name, stat, str(loupe.results[stat]))
                 failed_stats[stat_failure].append(loupe.title)
         print log_msg
+        #import pdb;pdb.set_trace()
+        output_dict = loupe.results
+        output_dict['title'] = loupe.title
+        output_dict['id'] = loupe.page_id
+        output_dict['times'] = loupe.times
+        output_file.write(json.dumps(output_dict, default=str))
+        output_file.write('\n')
         if kwargs.get('debug'):
             loupes.append(loupe)
 
@@ -187,8 +194,8 @@ def evaluate_category(category, limit, **kwargs):
         loupe_pool.start(al)
     loupe_pool.join()
 
-    file_name = 'results/' + str(time.time()) + '-report.html'
-    with open(file_name, 'w') as rf:
+    report_name = file_name + '-report.html'
+    with codecs.open(report_name, 'w', 'utf-8') as rf:
         rf.write(dash.get_report())
 
     if kwargs.get('debug'):
@@ -228,4 +235,8 @@ from dashboard import LoupeDashboard
 
 if __name__ == '__main__':
     opts, args = parse_args()
-    evaluate_category(**opts.__dict__)
+    kwargs = opts.__dict__
+    file_name = 'results/' + opts.category[:15].replace(' ', '_') + '-' + str(int(time.time())) + '.json'
+    with codecs.open(file_name, 'w', 'utf-8') as of:
+        kwargs['output_file'] = of
+        evaluate_category(**opts.__dict__)
