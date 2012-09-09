@@ -1,6 +1,6 @@
 import time
 import bottle
-from bottle import Bottle, JSONPlugin, run, TemplatePlugin
+from bottle import Bottle, JSONPlugin, run, TemplatePlugin, template
 from bottle import static_file
 from collections import defaultdict
 import sys
@@ -132,6 +132,9 @@ class LoupeDashboard(Bottle):
         ret['results'] = self.results
         return ret
 
+    def get_report(self):
+        return template('dashboard', self.render_dashboard())
+    
     def render_dashboard(self):
         return self.get_dict()
 

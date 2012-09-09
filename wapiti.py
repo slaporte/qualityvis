@@ -1,7 +1,3 @@
-import gevent
-from gevent.pool import Pool
-from gevent import monkey
-monkey.patch_all()
 
 import time
 from datetime import datetime
