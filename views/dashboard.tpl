@@ -132,3 +132,21 @@
 </table>
 
 <h2>Fetch failures</h2>
+%fetch_errs = len(fetch_failures)
+<p class="infos">We have <span class="info">{{fetch_errs}}</span> articles with fetch failures.</p>
+<table id="failure-table">
+    <thead>
+        <th>Article</th>
+        <th>No. input fetch failures</th>
+        <th>Fetch failures</th>
+    </thead>
+    <tbody>
+        %for (failed_input, f_total) in fetch_failures.iteritems():
+        <tr>
+            <td class='label'>{{failed_input}}</td>
+            <td>{{len(f_total)}}</td>
+            <td>{{', '.join(f_total)}}
+        </tr>
+        %end
+    </tbody>
+</table>

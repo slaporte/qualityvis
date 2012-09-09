@@ -36,7 +36,7 @@ def find_port(host=DEFAULT_HOST, start_port=DEFAULT_PORT, end_port=None):
 
 class LoupeDashboard(Bottle):
 
-    def __init__(self, loupe_pool, results, inputs=None, failed_stats=None, *args, **kwargs):
+    def __init__(self, loupe_pool, results, inputs=None, failed_stats=None, fetch_failures=None, *args, **kwargs):
         super(LoupeDashboard, self).__init__(*args, **kwargs)
         self.loupe_pool = loupe_pool
         self.results = results
@@ -46,6 +46,7 @@ class LoupeDashboard(Bottle):
         self.start_cmd = kwargs.get('start_cmd') or ' '.join(sys.argv)
         self.host_machine = kwargs.get('hostname') or socket.gethostname()
         self.failed_stats = failed_stats
+        self.fetch_failures = fetch_failures
         self.route('/', callback=self.render_dashboard, template='dashboard')
         self.route('/summary', callback=self.get_summary_dict, template='summary')
         self.route('/all_results', callback=self.get_all_results)
@@ -98,6 +99,7 @@ class LoupeDashboard(Bottle):
         ret['complete'] = [o.get('status') for o in self.results.values()]
         ret['meta'] = self.get_meta_dict()
         ret['failed_stats'] = self.failed_stats
+        ret['fetch_failures'] = self.fetch_failures
         return ret
 
     def get_all_results(self):

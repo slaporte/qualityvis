@@ -65,7 +65,7 @@ def fake_requests(url, params=None, headers=None, use_gzip=True):
     req = urllib2.Request(full_url, headers=headers)
     resp = urllib2.urlopen(req)
     resp_text = resp.read()
-    
+    resp.close()
     if resp.info().get('Content-Encoding') == 'gzip':
         comp_resp_text = resp_text
         buf = StringIO(comp_resp_text)

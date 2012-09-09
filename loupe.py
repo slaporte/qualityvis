@@ -1,7 +1,7 @@
 from optparse import OptionParser
 import logging
 import time
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 
 import gevent
 from gevent.greenlet import Greenlet
@@ -77,7 +77,8 @@ class ArticleLoupe(Greenlet):
 
     def _comp_hook(self, grnlt, **kwargs):
         self._comp_inputs_count += 1
-        self.results.update(grnlt.results)
+        if grnlt.results:
+            self.results.update(grnlt.results)
         if self.is_complete:
             self.times['complete'] = time.time()
 
@@ -148,8 +149,9 @@ def evaluate_category(category, limit, **kwargs):
     loupe_pool = gevent.pool.Pool(kwargs.get('concurrency', DEFAULT_CONC))
     loupe_pool.total_articles = len(cat_mems)
     create_i = 0
-    failed_stats = {}
-    dash = LoupeDashboard(loupe_pool, results, inputs=DEFAULT_INPUTS, failed_stats=failed_stats)
+    failed_stats = defaultdict(list)
+    fetch_failures = defaultdict(list)
+    dash = LoupeDashboard(loupe_pool, results, inputs=DEFAULT_INPUTS, failed_stats=failed_stats, fetch_failures=fetch_failures)
     dash.run()
 
     def loupe_on_complete(grnlt):
@@ -164,12 +166,12 @@ def evaluate_category(category, limit, **kwargs):
                       'dur': time.time() - loupe.times['create']}
         log_msg = u'#{co_i}/{count} (#{cr_i}) "{title}" took {dur:.4f} seconds'.format(**msg_params)
         for inpt in loupe.inputs:
-            for stat in inpt.status.get('failed_stats'):
+            status = inpt.status
+            if not status.get('fetch_succeeded'):
+                fetch_failures[loupe.title].append(inpt.class_name)
+            for stat in status.get('failed_stats'):
                 stat_failure = (inpt.class_name, stat, str(loupe.results[stat]))
-                if failed_stats.get(stat_failure):
-                    failed_stats[stat_failure].append(loupe.title)
-                else:
-                    failed_stats[stat_failure] = [loupe.title]
+                failed_stats[stat_failure].append(loupe.title)
         print log_msg
         if kwargs.get('debug'):
             loupes.append(loupe)
