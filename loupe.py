@@ -187,9 +187,12 @@ def evaluate_category(category, limit, **kwargs):
         loupe_pool.start(al)
     loupe_pool.join()
 
+    file_name = 'results/' + str(time.time()) + '-report.html'
+    with open(file_name, 'w') as rf:
+        rf.write(dash.get_report())
+
     if kwargs.get('debug'):
         import pdb;pdb.set_trace()
-
 # check for errors:
 # [al.title for al in loupes if any([isinstance(r, Exception) for r in al.results.values()])]
 

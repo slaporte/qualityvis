@@ -1,0 +1,217 @@
+<html>
+<head>
+  <title>Loupe</title>
+  <link rel="stylesheet" href="/static/css/normalize.css" />
+  <link rel="stylesheet/less" type="text/css" href="/static/css/style.less">
+  <script src="/static/js/less-1.3.0.min.js" type="text/javascript"></script>
+  <script src="/static/js/jquery-1.8.1.min.js" type="text/javascript"></script>
+  <script src="/static/js/dashboard.js" type="text/javascript"></script>
+</head>
+<body>
+
+<h1>Loupe Dashboard</h1>
+<p><input id="autorefresh" name="autorefresh" type="checkbox" /> <label for="autorefresh">Auto-update</label></p>
+<div id="content">
+<h2>Summary</h2>
+<p class="infos">Run started on <span class="info">hyperborea.local</span> at <span class="info">09 Sep 2012 06:15:53 UTC</span> via <span class="info">loupe.py -l 1</span>.
+    <p class="infos">Currently <span class="info">100.0%</span> complete.</p>
+<table id="sys-info">
+    <thead>
+        <th>Info</th>
+        <th>Value</th>
+        <th>Peak</th>
+    </thead>
+    <tbody>
+        <tr>
+            <td class='label'>CPU</td>
+            <td class='text'>0.7%</td>
+            <td class='text'>109.6%</td>
+        </tr>
+        <tr>
+            <td class='label'>Memory</td>
+            <td class='text'>26.0 MB / 0.22%</td>
+            <td class='text'>26.0 MB / 0.22%</td>
+        </tr>
+        <tr>
+            <td class='label'>Connections</td>
+            <td class='text'>2</td>
+            <td class='text'>15</td>
+        </tr>
+    </tbody>
+</table>
+
+<br/>
+
+<table id="conn-info">
+    <thead>
+        <th>Connection state</th>
+        <th>Number</th>
+    </thead>
+    <tbody>
+        <tr>
+            <td class='label'>Connecting</td><td>0</td>
+        </tr>
+        <tr>
+            <td class='label'>Established</td><td>1</td>
+        </tr>
+        <tr>
+            <td class='label'>Listening</td><td>1</td>
+        </tr>
+        <tr>
+            <td class='label'>Closing</td><td>0</td>
+        </tr>
+        <tr>
+            <td class='label'>Closed</td><td>0</td>
+        </tr>
+    </tbody>
+</table>
+
+<h2>Completion</h2>
+<p class="infos">We have completed <span class="info">1.0 loupes</span> in <span class="info">17.87s</span> (<span class="info">17.874</span> sec/loupe).</p>
+<table id="inputs-table">
+    <thead>
+        <th>Input name</th>
+        <th>Average time (max)</th>
+        <th>Average fetch time</th>
+        <th>Average process time</th>
+        <th>Success rate</th>
+    </thead>
+    <tbody>
+        <tr>
+            <td class='label'>Backlinks</td>
+            <td>2.0 (2.0)</td>
+            <td>1.9</td>
+            <td>0.0</td>
+            <td>100.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>LangLinks</td>
+            <td>1.8 (1.8)</td>
+            <td>1.8</td>
+            <td>0.0</td>
+            <td>100.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>InterWikiLinks</td>
+            <td>1.8 (1.8)</td>
+            <td>1.8</td>
+            <td>0.0</td>
+            <td>100.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>FeedbackV4</td>
+            <td>1.8 (1.8)</td>
+            <td>1.8</td>
+            <td>0.0</td>
+            <td>100.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>FeedbackV5</td>
+            <td>1.8 (1.8)</td>
+            <td>1.8</td>
+            <td>0.0</td>
+            <td>100.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>DOM</td>
+            <td>17.9 (17.9)</td>
+            <td>17.5</td>
+            <td>0.335</td>
+            <td>100.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>GoogleNews</td>
+            <td>1.2 (1.2)</td>
+            <td>1.2</td>
+            <td>0.0</td>
+            <td>0.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>GoogleSearch</td>
+            <td>1.2 (1.2)</td>
+            <td>1.2</td>
+            <td>0.0</td>
+            <td>0.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>PageViews</td>
+            <td>1.0 (1.0)</td>
+            <td>1.0</td>
+            <td>0.0</td>
+            <td>100.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>Revisions</td>
+            <td>2.4 (2.4)</td>
+            <td>2.3</td>
+            <td>0.02</td>
+            <td>100.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>Assessment</td>
+            <td>1.8 (1.8)</td>
+            <td>1.8</td>
+            <td>0.001</td>
+            <td>100.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>Watchers</td>
+            <td>0.7 (0.7)</td>
+            <td>0.7</td>
+            <td>0.0</td>
+            <td>100.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>ArticleHistory</td>
+            <td>0.9 (0.9)</td>
+            <td>0.9</td>
+            <td>0.002</td>
+            <td>100.0%</td>
+        </tr>
+    </tbody>
+</table>
+
+<h2>Stat failures</h2>
+<p class="infos">We have <span class="info">2</span> types of stat failures.</p>
+<table id="failure-table">
+    <thead>
+        <th>Input</th>
+        <th>Stat</th>
+        <th>Error</th>
+        <th>Total</th>
+        <th>Fail rate</th>
+        <th>Example</th>
+    </thead>
+    <tbody>
+        <tr>
+            <td class='label'>GoogleSearch</td>
+            <td class='label'>google_search_results</td>
+            <td class='text'>&#039;NoneType&#039; object is not subscriptable</td>
+            <td>1</td>
+            <td>100.0%</td>
+            <td><a href='https://en.wikipedia.org/wiki/(I_Can&#039;t_Get_No)_Satisfaction'>(I Can&#039;t Get No) Satisfaction</a></td>
+        </tr>
+        <tr>
+            <td class='label'>GoogleNews</td>
+            <td class='label'>google_news_results</td>
+            <td class='text'>&#039;NoneType&#039; object is not subscriptable</td>
+            <td>1</td>
+            <td>100.0%</td>
+            <td><a href='https://en.wikipedia.org/wiki/(I_Can&#039;t_Get_No)_Satisfaction'>(I Can&#039;t Get No) Satisfaction</a></td>
+        </tr>
+    </tbody>
+</table>
+
+<h2>Fetch failures</h2>
+<p class="infos">We have <span class="info">0</span> articles with fetch failures.</p>
+<table id="fetch-failure-table">
+    <thead>
+        <th>Article</th>
+        <th>No. input fetch failures</th>
+        <th>Fetch failures</th>
+    </thead>
+    <tbody>
+    </tbody>
+</table>
+</body>
+</html>
