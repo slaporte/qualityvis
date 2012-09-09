@@ -12,6 +12,57 @@
     %completion = str(round(summary['complete_count'] / float(summary['total_articles']), 4) * 100) + '%'
     <p class="infos">Currently <span class="info">{{completion}}</span> complete.</p>
 %end
+<table id="sys-info">
+    <thead>
+        <th>Info</th>
+        <th>Value</th>
+        <th>Peak</th>
+    </thead>
+    <tbody>
+        <tr>
+            <td class='label'>CPU</td>
+            <td class='text'>{{round(sys['cpu_pct'], 2)}}%</td>
+            <td class='text'>{{round(sys_peaks['cpu_pct'], 2)}}%</td>
+        </tr>
+        <tr>
+            <td class='label'>Memory</td>
+            <td class='text'>{{round(sys['mem_info'] / (1024 * 1024), 3)}} MB / {{round(sys['mem_pct'], 2)}}%</td>
+            <td class='text'>{{round(sys_peaks['mem_info'] / (1024 * 1024), 3)}} MB / {{round(sys_peaks['mem_pct'], 2)}}%</td>
+        </tr>
+        <tr>
+            <td class='label'>Connections</td>
+            <td class='text'>{{sys['no_connections']}}</td>
+            <td class='text'>{{sys_peaks['no_connections']}}</td>
+        </tr>
+    </tbody>
+</table>
+
+<br/>
+
+<table id="conn-info">
+    <thead>
+        <th>Connection state</th>
+        <th>Number</th>
+    </thead>
+    <tbody>
+        <tr>
+            <td class='label'>Connecting</td><td>{{sys['connections']['SYN_SENT']}}</td>
+        </tr>
+        <tr>
+            <td class='label'>Established</td><td>{{sys['connections']['ESTABLISHED']}}</td>
+        </tr>
+        <tr>
+            <td class='label'>Listening</td><td>{{sys['connections']['LISTEN']}}</td>
+        </tr>
+        <tr>
+            <td class='label'>Closing</td><td>{{sys['connections']['CLOSE_WAIT']}}</td>
+        </tr>
+        <tr>
+            <td class='label'>Closed</td><td>{{sys['connections']['CLOSE']}}</td>
+        </tr>
+    </tbody>
+</table>
+
 %if in_progress:
 <h2>Articles in Progress</h2>
 <p class="infos">There are <span class="info">{{summary['in_progress_count']}} loupes</span> in progress.</p>
@@ -134,7 +185,7 @@
 <h2>Fetch failures</h2>
 %fetch_errs = len(fetch_failures)
 <p class="infos">We have <span class="info">{{fetch_errs}}</span> articles with fetch failures.</p>
-<table id="failure-table">
+<table id="fetch-failure-table">
     <thead>
         <th>Article</th>
         <th>No. input fetch failures</th>

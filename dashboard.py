@@ -2,8 +2,12 @@ import time
 import bottle
 from bottle import Bottle, JSONPlugin, run, TemplatePlugin
 from bottle import static_file
+from collections import defaultdict
 import sys
 import socket
+
+import psutil
+import os
 
 import gevent
 from gevent.threadpool import ThreadPool
@@ -54,6 +58,7 @@ class LoupeDashboard(Bottle):
         self.uninstall(JSONPlugin)
         self.install(JSONPlugin(better_dumps))
         self.install(TemplatePlugin())
+        self.sys_peaks = defaultdict(float)
 
     def run(self, **kwargs):
         if self.tpool is None:
@@ -91,9 +96,29 @@ class LoupeDashboard(Bottle):
                 'host_machine': self.host_machine
                 }
 
+    def get_sys_stats(self):
+        p = psutil.Process(os.getpid())
+        connection_status = defaultdict(int)
+        for connection in p.get_connections():
+            connection_status[connection.status] += 1
+            connection_status['total'] += 1
+        ret = {'mem_info': p.get_memory_info().rss,
+                'mem_pct': p.get_memory_percent(),
+                'num_fds': p.get_num_fds(),
+                'connections': connection_status,
+                'no_connections': connection_status['total'],
+                'cpu_pct': p.get_cpu_percent(interval=.01)
+                }
+        for (key, value) in ret.iteritems():
+            if key is not 'connections' and value > self.sys_peaks[key]:
+                self.sys_peaks[key] = value
+        return ret
+
     def get_dict(self):
         ret = {}
         ret['summary'] = self.get_summary_dict(with_meta=False)
+        ret['sys'] = self.get_sys_stats()
+        ret['sys_peaks'] = self.sys_peaks
         ret['input_classes'] = [i.__name__ for i in self.inputs]
         ret['in_progress'] = [o.get_status() for o in self.loupe_pool]
         ret['complete'] = [o.get('status') for o in self.results.values()]
