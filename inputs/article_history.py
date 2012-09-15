@@ -98,7 +98,11 @@ def parse_date(date):
 
 def age_as_str(date):
     try:
-        return str(datetime.now() - date)
+        diff = datetime.utcnow() - date
+        try:
+            return diff.total_seconds()
+        except TypeError:
+            return None
     except TypeError:
         return None
 

@@ -1,17 +1,26 @@
 from base import Input
 from wapiti import get_json
 from stats import dist_stats
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from math import ceil
 from collections import OrderedDict, defaultdict
 
 REVERT_WINDOW = 4
 SLEUTHING_FACTOR = 10
 RETURNING_ED_THRESHOLD = 5
+DEFAULT_CUTOFF = 2010
 
 
 def parse_date_string(stamp):
     return datetime.strptime(stamp, '%Y%m%d%H%M%S')
+
+
+def get_time_diffs(revisions):
+    tds_seconds = []
+    for x, y in zip(revisions, revisions[1:]):
+        td = y['rev_parsed_date'] - x['rev_parsed_date']
+        tds_seconds.append(td.total_seconds())
+    return tds_seconds
 
 
 def set_info(revisions):
@@ -35,12 +44,13 @@ def set_info(revisions):
         'ed_top_5': get_top_percent_editors(.05, sorted_editor_counts, len(revisions)),
         'ed_top_20_bytes': get_top_percent_editors(.20, sorted_editor_bytes, abs_byte_sum),
         'ed_top_5_bytes': get_top_percent_editors(.05, sorted_editor_bytes, abs_byte_sum),
+        'by_day': dist_stats(edits_by_day(revisions)),
         }
 
 
 def newer_than(num_days, rev_list):
     ret = []
-    bound = datetime.now() - timedelta(days=num_days)
+    bound = datetime.utcnow() - timedelta(days=num_days)
     for i in range(0, len(rev_list)):
         if rev_list[i]['rev_parsed_date'] < bound:
             continue
@@ -74,27 +84,40 @@ def get_top_percent_editors(percent, sorted_editor_counts, rev_len):
         return 0.0
 
 
+def edits_by_day(revisions, window=0):
+    ed_dict = defaultdict(list)
+    for rev in revisions:
+        ed_dict[rev['rev_parsed_date'].utctimetuple()[:3]].append(rev)
+    return [len(eds) for (dtup, eds) in ed_dict.iteritems()]
+
+
 def all_revisions(revisions):
     if revisions:
+        first_edit_age = datetime.utcnow() - revisions[0]['rev_parsed_date']
+        most_recent_edit_age = datetime.utcnow() - revisions[-1]['rev_parsed_date']
         ret = {
         'all': set_info(revisions),
+        'last_2_days': set_info(newer_than(30, revisions)),
         'last_30_days': set_info(newer_than(30, revisions)),
-        'last_2_days': set_info(newer_than(2, revisions)),
-        'most_recent_edit_age': str(datetime.now() - revisions[-1]['rev_parsed_date']),
-        'first_edit_date': str(revisions[0]['rev_parsed_date']),
-        'first_edit_age': str(datetime.now() - revisions[0]['rev_parsed_date']),
-        'most_recent_edit_date': str(revisions[-1]['rev_parsed_date'])
+        'last_90_days': set_info(newer_than(90, revisions)),
+        'last_365_days': set_info(newer_than(365, revisions)),
+        'most_recent_edit_age': most_recent_edit_age.total_seconds(),
+        'first_edit_date': revisions[0]['rev_parsed_date'].isoformat(),
+        'first_edit_age': first_edit_age.total_seconds(),
+        'most_recent_edit_date': str(revisions[-1]['rev_parsed_date'].isoformat()),
+        'time_between_revs': dist_stats(get_time_diffs(revisions))
         # TODO: stats by editor (top %, 5+ edits), by date (last 30 days), length stats
         }
     else:
         ret = {
         'all': None,
         'last_30_days': None,
-        'last_2_days': None,
+        'last_90_days': None,
         'most_recent_edit_age': None,
         'first_edit_date': None,
         'first_edit_age': None,
-        'most_recent_edit_date': None
+        'most_recent_edit_date': None,
+        'time_between_revs': None
         }
     return ret
 
@@ -105,7 +128,6 @@ def preprocess_revs(revs):
         rev['rev_parsed_date'] = parse_date_string(rev['rev_timestamp'])
         rev['rev_diff'] = rev['rev_len'] - prev_len
         prev_len = rev['rev_len']
-
     return revs
 
 

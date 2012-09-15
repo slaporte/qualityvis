@@ -1,7 +1,6 @@
 import json
 import codecs
 import tablib
-from loupe import flatten_dict
 from itertools import chain
 from optparse import OptionParser
 from collections import namedtuple
@@ -17,10 +16,28 @@ IGNORE = OrangeType('s', 'i')
 meta_features = {'title': OrangeType('s', 'meta'),
                  'id': OrangeType('s', 'meta'),
                  'ah_topic': OrangeType('s', 'meta'),
-                 'ah_current': OrangeType('s', 'meta'),
+                 'ah_current': OrangeType('d', 'meta'),
                  'ah_actions': IGNORE,
                  'assessment': IGNORE
                 }
+
+
+def flatten_dict(root, prefix_keys=True):
+    dicts = [([], root)]
+    ret = {}
+    seen = set()
+    for path, d in dicts:
+        if id(d) in seen:
+            continue
+        seen.add(id(d))
+        for k, v in d.items():
+            new_path = path + [k]
+            prefix = '_'.join(new_path) if prefix_keys else k
+            if hasattr(v, 'items'):
+                dicts.append((new_path, v))
+            else:
+                ret[prefix] = v
+    return ret
 
 
 def load_results(file_name):
