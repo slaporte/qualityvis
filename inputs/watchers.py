@@ -1,4 +1,5 @@
-from base import Input, get_json
+from base import Input
+from wapiti import get_json
 
 class Watchers(Input):
     def fetch(self):

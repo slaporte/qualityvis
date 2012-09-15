@@ -1,6 +1,8 @@
-from base import Input, get_url
+from base import Input
+from wapiti import get_url
 import wapiti
 from pyquery import PyQuery
+import pdb
 
 from stats import dist_stats
 
@@ -42,7 +44,16 @@ def element_words_dist(elem):
 
 def pq_contains(elem, search):
     """Just a quick factory function to create lambdas to do xpath in a cross-version way"""
-    return lambda f: len(f.root.xpath(u'{e}[contains("{s}")]'.format(e=elem, s=search)))
+    def xpath_search(f):
+        if not f:
+            return 0
+        else:
+            try:
+                roottree = f.root  # for pyquery on lxml 2
+            except AttributeError:
+                roottree = f[0].getroottree()  # for lxml 3
+            return len(roottree.xpath(u'//{e}[contains(., "{s}")]'.format(e=elem, s=search)))
+    return xpath_search
 
 
 class DOM(Input):
@@ -58,9 +69,12 @@ class DOM(Input):
 
     def fetch(self):
         # avg process time: 0.14827052116394043 seconds
-        page = get_url('http://en.wikipedia.org/wiki/' + self.page_title.replace(' ', '_'))
-        ret = PyQuery(page.text).find('div#content')
+        ret = get_url('http://en.wikipedia.org/wiki/' + self.page_title.replace(' ', '_'))
         return ret
+
+    def process(self, f_res):
+        ret = PyQuery(f_res.text).find('div#content')
+        return super(DOM, self).process(ret)
 
     # TODO: check pyquery errors
     stats = {

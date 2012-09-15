@@ -85,6 +85,7 @@ class LoupeDashboard(Bottle):
 
     def get_meta_dict(self):
         return {'start_time': time.strftime("%d %b %Y %H:%M:%S UTC", time.gmtime(self.start_time)),
+                'duration': time.time() - self.start_time,
                 'start_cmd': self.start_cmd,
                 'host_machine': self.host_machine
                 }
@@ -104,6 +105,9 @@ class LoupeDashboard(Bottle):
         ret['results'] = self.results
         return ret
 
+    def get_report(self):
+        return template('dashboard', self.render_dashboard())
+    
     def render_dashboard(self):
         return self.get_dict()
 
