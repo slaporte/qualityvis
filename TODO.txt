@@ -75,3 +75,8 @@ and must decide, without knowing the source of the classification, which rank is
 Motivation: Confirmation of these hypotheses does not represent a definitive conclusion that the predictor is correct,
 but may result in increased credibility for the prediction system, as well as article assessments themselves. That said,
 the validity of the predictor is not strictly tied to the assessment system.
+
+
+==Assorted Hypotheses==
+# Page View statistics will be strongly correlated with edit traffic
+# Protected pages have higher than average page view statistics
