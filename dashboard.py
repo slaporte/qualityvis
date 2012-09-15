@@ -1,6 +1,6 @@
 import time
 import bottle
-from bottle import Bottle, JSONPlugin, run, TemplatePlugin
+from bottle import Bottle, JSONPlugin, run, TemplatePlugin, template
 from bottle import static_file
 import sys
 import socket
@@ -106,6 +106,9 @@ class LoupeDashboard(Bottle):
 
     def render_dashboard(self):
         return self.get_dict()
+
+    def get_report(self):
+        return template('dashboard', self.render_dashboard())
 
     def serve_static(self, filepath):
         from os.path import dirname
