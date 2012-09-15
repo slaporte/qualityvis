@@ -16,6 +16,57 @@
     %completion = str(round(summary['complete_count'] / float(summary['total_articles']), 4) * 100) + '%'
     <p class="infos">Currently <span class="info">{{completion}}</span> complete.</p>
 %end
+<table id="sys-info">
+    <thead>
+        <th>Info</th>
+        <th>Value</th>
+        <th>Peak</th>
+    </thead>
+    <tbody>
+        <tr>
+            <td class='label'>CPU</td>
+            <td class='text'>{{round(sys['cpu_pct'], 2)}}%</td>
+            <td class='text'>{{round(sys_peaks['cpu_pct'], 2)}}%</td>
+        </tr>
+        <tr>
+            <td class='label'>Memory</td>
+            <td class='text'>{{round(sys['mem_info'] / (1024 * 1024), 3)}} MB / {{round(sys['mem_pct'], 2)}}%</td>
+            <td class='text'>{{round(sys_peaks['mem_info'] / (1024 * 1024), 3)}} MB / {{round(sys_peaks['mem_pct'], 2)}}%</td>
+        </tr>
+        <tr>
+            <td class='label'>Connections</td>
+            <td class='text'>{{sys['no_connections']}}</td>
+            <td class='text'>{{sys_peaks['no_connections']}}</td>
+        </tr>
+    </tbody>
+</table>
+
+<br/>
+
+<table id="conn-info">
+    <thead>
+        <th>Connection state</th>
+        <th>Number</th>
+    </thead>
+    <tbody>
+        <tr>
+            <td class='label'>Connecting</td><td>{{sys['connections']['SYN_SENT']}}</td>
+        </tr>
+        <tr>
+            <td class='label'>Established</td><td>{{sys['connections']['ESTABLISHED']}}</td>
+        </tr>
+        <tr>
+            <td class='label'>Listening</td><td>{{sys['connections']['LISTEN']}}</td>
+        </tr>
+        <tr>
+            <td class='label'>Closing</td><td>{{sys['connections']['CLOSE_WAIT']}}</td>
+        </tr>
+        <tr>
+            <td class='label'>Closed</td><td>{{sys['connections']['CLOSE']}}</td>
+        </tr>
+    </tbody>
+</table>
+
 %if in_progress:
 <h2>Articles in Progress</h2>
 <p class="infos">There are <span class="info">{{summary['in_progress_count']}} loupes</span> in progress.</p>
@@ -75,7 +126,7 @@
         %for i_name in input_classes:
         <tr>
             <td class='label'>{{i_name}}</td>
-            %total_times = [time['durations'].get(i_name, {}).get('total') for time in complete if time['durations'].get(i_name, {}).get('total')]
+            %total_times = [time['durations'].get(i_name, {}).get('total') for time in complete if time.get('durations', {}).get(i_name, {}).get('total')]
             %if len(total_times):
                 %av_total = round(sum(total_times) / len(total_times), 1)
                 %max_total = round(max(total_times), 1)
@@ -108,7 +159,7 @@
         %end
     </tbody>
 </table>
-
+%if total:
 <h2>Stat failures</h2>
 %total_errs = len(failed_stats)
 <p class="infos">We have <span class="info">{{total_errs}}</span> types of stat failures.</p>
@@ -134,5 +185,23 @@
         %end
     </tbody>
 </table>
-
+%end
 <h2>Fetch failures</h2>
+%fetch_errs = len(fetch_failures)
+<p class="infos">We have <span class="info">{{fetch_errs}}</span> articles with fetch failures.</p>
+<table id="fetch-failure-table">
+    <thead>
+        <th>Article</th>
+        <th>No. input fetch failures</th>
+        <th>Fetch failures</th>
+    </thead>
+    <tbody>
+        %for (failed_input, f_total) in fetch_failures.iteritems():
+        <tr>
+            <td class='label'>{{failed_input}}</td>
+            <td>{{len(f_total)}}</td>
+            <td>{{', '.join(f_total)}}
+        </tr>
+        %end
+    </tbody>
+</table>

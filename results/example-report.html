@@ -1,0 +1,386 @@
+<html>
+<head>
+  <title>Loupe</title>
+  <link rel="stylesheet" href="/static/css/normalize.css" />
+  <link rel="stylesheet/less" type="text/css" href="/static/css/style.less">
+  <script src="/static/js/less-1.3.0.min.js" type="text/javascript"></script>
+  <script src="/static/js/jquery-1.8.1.min.js" type="text/javascript"></script>
+  <script src="/static/js/dashboard.js" type="text/javascript"></script>
+</head>
+<body>
+
+<h1>Loupe Dashboard</h1>
+<p><input id="autorefresh" name="autorefresh" type="checkbox" /> <label for="autorefresh">Auto-update</label></p>
+<div id="content">
+<h2>Summary</h2>
+<p class="infos">Run started on <span class="info">hyperborea.local</span> at <span class="info">09 Sep 2012 08:14:28 UTC</span> via <span class="info">loupe.py -l 5000 -c 15</span>.
+    <p class="infos">Currently <span class="info">100.0%</span> complete.</p>
+<table id="sys-info">
+    <thead>
+        <th>Info</th>
+        <th>Value</th>
+        <th>Peak</th>
+    </thead>
+    <tbody>
+        <tr>
+            <td class='label'>CPU</td>
+            <td class='text'>2.8%</td>
+            <td class='text'>235.1%</td>
+        </tr>
+        <tr>
+            <td class='label'>Memory</td>
+            <td class='text'>548.0 MB / 4.47%</td>
+            <td class='text'>632.0 MB / 5.15%</td>
+        </tr>
+        <tr>
+            <td class='label'>Connections</td>
+            <td class='text'>2</td>
+            <td class='text'>176</td>
+        </tr>
+    </tbody>
+</table>
+
+<br/>
+
+<table id="conn-info">
+    <thead>
+        <th>Connection state</th>
+        <th>Number</th>
+    </thead>
+    <tbody>
+        <tr>
+            <td class='label'>Connecting</td><td>0</td>
+        </tr>
+        <tr>
+            <td class='label'>Established</td><td>1</td>
+        </tr>
+        <tr>
+            <td class='label'>Listening</td><td>1</td>
+        </tr>
+        <tr>
+            <td class='label'>Closing</td><td>0</td>
+        </tr>
+        <tr>
+            <td class='label'>Closed</td><td>0</td>
+        </tr>
+    </tbody>
+</table>
+
+<h2>Completion</h2>
+<p class="infos">We have completed <span class="info">3117.0 loupes</span> in <span class="info">2743.17s</span> (<span class="info">0.88</span> sec/loupe).</p>
+<table id="inputs-table">
+    <thead>
+        <th>Input name</th>
+        <th>Average time (max)</th>
+        <th>Average fetch time</th>
+        <th>Average process time</th>
+        <th>Success rate</th>
+    </thead>
+    <tbody>
+        <tr>
+            <td class='label'>Backlinks</td>
+            <td>2.8 (13.0)</td>
+            <td>1.9</td>
+            <td>0.0</td>
+            <td>100.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>LangLinks</td>
+            <td>2.6 (12.9)</td>
+            <td>1.7</td>
+            <td>0.0</td>
+            <td>100.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>InterWikiLinks</td>
+            <td>2.6 (14.2)</td>
+            <td>1.7</td>
+            <td>0.0</td>
+            <td>100.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>FeedbackV4</td>
+            <td>2.7 (12.5)</td>
+            <td>1.8</td>
+            <td>0.0</td>
+            <td>100.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>FeedbackV5</td>
+            <td>2.6 (11.9)</td>
+            <td>1.7</td>
+            <td>0.0</td>
+            <td>100.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>DOM</td>
+            <td>3.9 (14.0)</td>
+            <td>2.6</td>
+            <td>0.475</td>
+            <td>100.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>GoogleNews</td>
+            <td>3.7 (14.2)</td>
+            <td>2.8</td>
+            <td>0.0</td>
+            <td>0.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>GoogleSearch</td>
+            <td>3.7 (14.4)</td>
+            <td>2.8</td>
+            <td>0.0</td>
+            <td>0.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>PageViews</td>
+            <td>12.7 (31.5)</td>
+            <td>11.8</td>
+            <td>0.0</td>
+            <td>100.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>Revisions</td>
+            <td>7.5 (114.3)</td>
+            <td>6.9</td>
+            <td>0.05</td>
+            <td>99.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>Assessment</td>
+            <td>2.8 (11.9)</td>
+            <td>1.9</td>
+            <td>0.0</td>
+            <td>100.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>Watchers</td>
+            <td>3.0 (11.8)</td>
+            <td>2.1</td>
+            <td>0.0</td>
+            <td>100.0%</td>
+        </tr>
+        <tr>
+            <td class='label'>ArticleHistory</td>
+            <td>2.7 (15.4)</td>
+            <td>1.9</td>
+            <td>0.002</td>
+            <td>100.0%</td>
+        </tr>
+    </tbody>
+</table>
+<h2>Stat failures</h2>
+<p class="infos">We have <span class="info">4</span> types of stat failures.</p>
+<table id="failure-table">
+    <thead>
+        <th>Input</th>
+        <th>Stat</th>
+        <th>Error</th>
+        <th>Total</th>
+        <th>Fail rate</th>
+        <th>Example</th>
+    </thead>
+    <tbody>
+        <tr>
+            <td class='label'>ArticleHistory</td>
+            <td class='label'>oldest_action_age</td>
+            <td class='text'>list index out of range</td>
+            <td>2</td>
+            <td>0.0%</td>
+            <td><a href='https://en.wikipedia.org/wiki/Cat'>Cat</a></td>
+        </tr>
+        <tr>
+            <td class='label'>ArticleHistory</td>
+            <td class='label'>recent_action_age</td>
+            <td class='text'>list index out of range</td>
+            <td>2</td>
+            <td>0.0%</td>
+            <td><a href='https://en.wikipedia.org/wiki/Cat'>Cat</a></td>
+        </tr>
+        <tr>
+            <td class='label'>GoogleSearch</td>
+            <td class='label'>google_search_results</td>
+            <td class='text'>&#039;NoneType&#039; object is not subscriptable</td>
+            <td>3117</td>
+            <td>100.0%</td>
+            <td><a href='https://en.wikipedia.org/wiki/Ramón_Emeterio_Betances'>Ramón Emeterio Betances</a></td>
+        </tr>
+        <tr>
+            <td class='label'>GoogleNews</td>
+            <td class='label'>google_news_results</td>
+            <td class='text'>&#039;NoneType&#039; object is not subscriptable</td>
+            <td>3117</td>
+            <td>100.0%</td>
+            <td><a href='https://en.wikipedia.org/wiki/Ramón_Emeterio_Betances'>Ramón Emeterio Betances</a></td>
+        </tr>
+    </tbody>
+</table>
+<h2>Fetch failures</h2>
+<p class="infos">We have <span class="info">31</span> articles with fetch failures.</p>
+<table id="fetch-failure-table">
+    <thead>
+        <th>Article</th>
+        <th>No. input fetch failures</th>
+        <th>Fetch failures</th>
+    </thead>
+    <tbody>
+        <tr>
+            <td class='label'>RNA interference</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Bhutan</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Solar System</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Zambezi</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Star Trek</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Doctor Who</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Vancouver</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Jabba the Hutt</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>House (TV series)</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Copyright</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>The Political Cesspool</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Intelligent design</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Peregrine Falcon</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Rosetta Stone</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Hungarian Revolution of 1956</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Gas metal arc welding</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Belgium</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Galileo Galilei</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Muhammad Iqbal</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Shakespeare authorship question</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Abdul Karim (the Munshi)</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Truthiness</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>The Elder Scrolls III: Morrowind</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Mary Shelley</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Warkworth Castle</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Grand Duchess Olga Nikolaevna of Russia</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Nahuatl</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Halloween II</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Voting system</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Atmosphere of Jupiter</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+        <tr>
+            <td class='label'>Galaxy</td>
+            <td>1</td>
+            <td>Revisions
+        </tr>
+    </tbody>
+</table>
+</body>
+</html>

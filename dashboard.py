@@ -2,8 +2,12 @@ import time
 import bottle
 from bottle import Bottle, JSONPlugin, run, TemplatePlugin, template
 from bottle import static_file
+from collections import defaultdict
 import sys
 import socket
+
+import psutil
+import os
 
 import gevent
 from gevent.threadpool import ThreadPool
@@ -36,7 +40,7 @@ def find_port(host=DEFAULT_HOST, start_port=DEFAULT_PORT, end_port=None):
 
 class LoupeDashboard(Bottle):
 
-    def __init__(self, loupe_pool, results, inputs=None, failed_stats=None, *args, **kwargs):
+    def __init__(self, loupe_pool, results, inputs=None, failed_stats=None, fetch_failures=None, *args, **kwargs):
         super(LoupeDashboard, self).__init__(*args, **kwargs)
         self.loupe_pool = loupe_pool
         self.results = results
@@ -46,6 +50,7 @@ class LoupeDashboard(Bottle):
         self.start_cmd = kwargs.get('start_cmd') or ' '.join(sys.argv)
         self.host_machine = kwargs.get('hostname') or socket.gethostname()
         self.failed_stats = failed_stats
+        self.fetch_failures = fetch_failures
         self.route('/', callback=self.render_dashboard, template='dashboard')
         self.route('/summary', callback=self.get_summary_dict, template='summary')
         self.route('/all_results', callback=self.get_all_results)
@@ -53,6 +58,7 @@ class LoupeDashboard(Bottle):
         self.uninstall(JSONPlugin)
         self.install(JSONPlugin(better_dumps))
         self.install(TemplatePlugin())
+        self.sys_peaks = defaultdict(float)
 
     def run(self, **kwargs):
         if self.tpool is None:
@@ -90,14 +96,35 @@ class LoupeDashboard(Bottle):
                 'host_machine': self.host_machine
                 }
 
+    def get_sys_stats(self):
+        p = psutil.Process(os.getpid())
+        connection_status = defaultdict(int)
+        for connection in p.get_connections():
+            connection_status[connection.status] += 1
+            connection_status['total'] += 1
+        ret = {'mem_info': p.get_memory_info().rss,
+                'mem_pct': p.get_memory_percent(),
+                'num_fds': p.get_num_fds(),
+                'connections': connection_status,
+                'no_connections': connection_status['total'],
+                'cpu_pct': p.get_cpu_percent(interval=.01)
+                }
+        for (key, value) in ret.iteritems():
+            if key is not 'connections' and value > self.sys_peaks[key]:
+                self.sys_peaks[key] = value
+        return ret
+
     def get_dict(self):
         ret = {}
         ret['summary'] = self.get_summary_dict(with_meta=False)
+        ret['sys'] = self.get_sys_stats()
+        ret['sys_peaks'] = self.sys_peaks
         ret['input_classes'] = [i.__name__ for i in self.inputs]
         ret['in_progress'] = [o.get_status() for o in self.loupe_pool]
         ret['complete'] = [o.get('status') for o in self.results.values()]
         ret['meta'] = self.get_meta_dict()
         ret['failed_stats'] = self.failed_stats
+        ret['fetch_failures'] = self.fetch_failures
         return ret
 
     def get_all_results(self):

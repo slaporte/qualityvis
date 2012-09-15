@@ -6,8 +6,9 @@ from gevent.greenlet import Greenlet
 from optparse import OptionParser
 import logging
 import time
-from collections import OrderedDict
-
+import codecs
+from collections import OrderedDict, defaultdict
+import json
 import wapiti
 
 DEFAULT_CAT = "Featured articles that have appeared on the main page"
@@ -79,7 +80,8 @@ class ArticleLoupe(Greenlet):
 
     def _comp_hook(self, grnlt, **kwargs):
         self._comp_inputs_count += 1
-        self.results.update(grnlt.results)
+        if grnlt.results:
+            self.results.update(grnlt.results)
         if self.is_complete:
             self.times['complete'] = time.time()
 
@@ -141,7 +143,8 @@ def flatten_dict(root, prefix_keys=True):
     return ret
 
 
-def evaluate_category(category, limit, **kwargs):
+def evaluate_category(category, limit, output_file, **kwargs):
+    file_name = output_file.name.partition('.')[0]
     print 'Fetching members of category', str(category) + '...'
     cat_mems = wapiti.get_category(category, count=limit, to_zero_ns=True)
     print 'Creating Loupes for', len(cat_mems), 'articles in', str(category) + '...'
@@ -150,15 +153,14 @@ def evaluate_category(category, limit, **kwargs):
     loupe_pool = gevent.pool.Pool(kwargs.get('concurrency', DEFAULT_CONC))
     loupe_pool.total_articles = len(cat_mems)
     create_i = 0
-    failed_stats = {}
-    dash = LoupeDashboard(loupe_pool, results, inputs=DEFAULT_INPUTS, failed_stats=failed_stats)
+    failed_stats = defaultdict(list)
+    fetch_failures = defaultdict(list)
+    dash = LoupeDashboard(loupe_pool, results, inputs=DEFAULT_INPUTS, failed_stats=failed_stats, fetch_failures=fetch_failures)
     dash.run()
 
     def loupe_on_complete(grnlt):
         loupe = grnlt
-
         results[loupe.title] = loupe.to_dict()
-
         msg_params = {'cr_i': loupe.create_i,
                       'co_i': len(results),
                       'count': len(cat_mems),
@@ -166,13 +168,20 @@ def evaluate_category(category, limit, **kwargs):
                       'dur': time.time() - loupe.times['create']}
         log_msg = u'#{co_i}/{count} (#{cr_i}) "{title}" took {dur:.4f} seconds'.format(**msg_params)
         for inpt in loupe.inputs:
-            for stat in inpt.status.get('failed_stats'):
+            status = inpt.status
+            if not status.get('fetch_succeeded'):
+                fetch_failures[loupe.title].append(inpt.class_name)
+            for stat in status.get('failed_stats'):
                 stat_failure = (inpt.class_name, stat, str(loupe.results[stat]))
-                if failed_stats.get(stat_failure):
-                    failed_stats[stat_failure].append(loupe.title)
-                else:
-                    failed_stats[stat_failure] = [loupe.title]
+                failed_stats[stat_failure].append(loupe.title)
         print log_msg
+        #import pdb;pdb.set_trace()
+        output_dict = loupe.results
+        output_dict['title'] = loupe.title
+        output_dict['id'] = loupe.page_id
+        output_dict['times'] = loupe.times
+        output_file.write(json.dumps(output_dict, default=str))
+        output_file.write('\n')
         if kwargs.get('debug'):
             loupes.append(loupe)
 
@@ -185,9 +194,12 @@ def evaluate_category(category, limit, **kwargs):
         loupe_pool.start(al)
     loupe_pool.join()
 
+    report_name = file_name + '-report.html'
+    with codecs.open(report_name, 'w', 'utf-8') as rf:
+        rf.write(dash.get_report())
+
     if kwargs.get('debug'):
         import pdb;pdb.set_trace()
-
 # check for errors:
 # [al.title for al in loupes if any([isinstance(r, Exception) for r in al.results.values()])]
 
@@ -223,4 +235,8 @@ from dashboard import LoupeDashboard
 
 if __name__ == '__main__':
     opts, args = parse_args()
-    evaluate_category(**opts.__dict__)
+    kwargs = opts.__dict__
+    file_name = 'results/' + opts.category[:15].replace(' ', '_') + '-' + str(int(time.time())) + '.json'
+    with codecs.open(file_name, 'w', 'utf-8') as of:
+        kwargs['output_file'] = of
+        evaluate_category(**opts.__dict__)

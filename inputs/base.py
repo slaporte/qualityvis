@@ -46,15 +46,15 @@ class Input(Greenlet):
     def status(self):
         ret = {}
         ret['attempts'] = self.attempts
-        ret['is_complete'] = self.results is not None
+        ret['is_complete'] = self.results is not None or self.attempts >= self.retries
         ret['fetch_succeeded'] = self.fetch_results is not None
-        if ret['is_complete']:
+        if self.results:
             ret['failed_stats'] = dict([ (sname, unicode(sres))
                                          for sname, sres in self.results.iteritems()
                                          if isinstance(sres, Exception) ])
         else:
             ret['failed_stats'] = {}
-        ret['is_successful'] = ret['is_complete'] and not ret['failed_stats']
+        ret['is_successful'] = ret['is_complete'] and ret['fetch_succeeded'] and not ret['failed_stats']
         return ret
 
     def fetch(self):
@@ -77,24 +77,24 @@ class Input(Greenlet):
     def __call__(self):
         self.times['fetch_start'] = time.time()
         for i in range(0, self.retries):
-            self.attempts += 1
             try:
                 self.fetch_results = self.fetch()
             except Exception as e:
                 e_msg = u"Fetch failed on {i_t} input for article {p_t} ({p_id}) with exception {e}"
                 e_msg = e_msg.format(p_t=self.page_title, p_id=self.page_id, i_t=self.class_name, e=repr(e))
                 print e_msg
+                #import pdb;pdb.post_mortem()
             else:
                 break
             finally:
                 self.times['fetch_end'] = self.times['process_start'] = time.time()
-
-        proc_res = self.process(self.fetch_results)
-        self.results = proc_res
-        if isinstance(proc_res, Exception):
-            print type(self), 'process step glubbed up on', self.page_title
-        self.times['process_end'] = self.times['complete'] = time.time()
-        return proc_res
+                self.attempts += 1
+        if self.fetch_results is not None:
+            self.results = self.process(self.fetch_results)
+            if isinstance(self.results, Exception):
+                print type(self), 'process step glubbed up on', self.page_title
+            self.times['process_end'] = self.times['complete'] = time.time()
+        return self.results
 
     _run = __call__
 

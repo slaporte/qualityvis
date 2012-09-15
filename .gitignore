@@ -17,3 +17,5 @@ article_html/*.html
 
 node_modules
 html
+src/
+results/*
