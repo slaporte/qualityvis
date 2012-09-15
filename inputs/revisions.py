@@ -40,7 +40,7 @@ def set_info(revisions):
 
 def newer_than(num_days, rev_list):
     ret = []
-    bound = datetime.now() - timedelta(days=num_days)
+    bound = datetime.utcnow() - timedelta(days=num_days)
     for i in range(0, len(rev_list)):
         if rev_list[i]['rev_parsed_date'] < bound:
             continue
@@ -75,15 +75,17 @@ def get_top_percent_editors(percent, sorted_editor_counts, rev_len):
 
 
 def all_revisions(revisions):
+    first_edit_age = datetime.utcnow() - revisions[0]['rev_parsed_date']
+    most_recent_edit_age = datetime.utcnow() - revisions[-1]['rev_parsed_date']
     if revisions:
         ret = {
         'all': set_info(revisions),
         'last_30_days': set_info(newer_than(30, revisions)),
         'last_2_days': set_info(newer_than(2, revisions)),
-        'most_recent_edit_age': str(datetime.now() - revisions[-1]['rev_parsed_date']),
-        'first_edit_date': str(revisions[0]['rev_parsed_date']),
-        'first_edit_age': str(datetime.now() - revisions[0]['rev_parsed_date']),
-        'most_recent_edit_date': str(revisions[-1]['rev_parsed_date'])
+        'most_recent_edit_age': most_recent_edit_age.total_seconds(),
+        'first_edit_date': revisions[0]['rev_parsed_date'].isoformat(),
+        'first_edit_age': first_edit_age.total_seconds(),
+        'most_recent_edit_date': str(revisions[-1]['rev_parsed_date'].isoformat())
         # TODO: stats by editor (top %, 5+ edits), by date (last 30 days), length stats
         }
     else:
