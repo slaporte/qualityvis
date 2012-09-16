@@ -64,10 +64,7 @@ class Input(Greenlet):
         ret = {}
         for k, func in self.stats.iteritems():
             try:
-                if fetch_results:
-                    res = func(fetch_results)
-                else:
-                    res = None
+                res = func(fetch_results)
             except Exception as e:
                 ret[k] = e
             else:

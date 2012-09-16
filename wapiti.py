@@ -5,6 +5,7 @@ import re
 import itertools
 import requests
 import json
+from sys import maxint
 
 from collections import namedtuple
 from functools import partial
@@ -23,11 +24,13 @@ DEFAULT_CONC     = 100
 DEFAULT_PER_CALL = 4
 DEFAULT_TIMEOUT  = 15
 DEFAULT_HEADERS = { 'User-Agent': 'Loupe/0.0.0 Mahmoud Hashemi makuro@gmail.com' }
+DEFAULT_MAX_COUNT = maxint
 
 class WikiException(Exception): pass
 PageIdentifier = namedtuple("PageIdentifier", "page_id, ns, title")
 Page = namedtuple("Page", "title, req_title, namespace, page_id, rev_id, rev_text, is_parsed, fetch_date, fetch_duration")
 RevisionInfo = namedtuple('RevisionInfo', 'page_title, page_id, namespace, rev_id, rev_parent_id, user_text, user_id, length, time, sha1, comment, tags')
+
 
 def parse_timestamp(timestamp):
     return datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%SZ')
@@ -56,8 +59,7 @@ def fake_requests(url, params=None, headers=None, use_gzip=True):
         headers['Accept-encoding'] = 'gzip'
 
     req = requests.Request(url, params=params, headers=headers, method='GET', prefetch=False)
-    full_url = req.full_url  # oh lawd, usin requests to create the url for now
-        
+    full_url = req.full_url  # oh lawd, usin requests to create the url for now 
     req = urllib2.Request(full_url, headers=headers)
     resp = urllib2.urlopen(req)
     resp_text = resp.read()
@@ -67,11 +69,10 @@ def fake_requests(url, params=None, headers=None, use_gzip=True):
         buf = StringIO(comp_resp_text)
         f = gzip.GzipFile(fileobj=buf)
         resp_text = f.read()
-    
+
     ret.text = resp_text
     ret.status_code = resp.getcode()
     ret.headers = resp.headers
-    
     return ret
 
 
@@ -87,7 +88,6 @@ def get_url(url, params=None, raise_exc=True):
     return resp
 
 def get_json(*args, **kwargs):
-    import json
     resp = get_url(*args, **kwargs)
     return json.loads(resp.text)
 
@@ -406,14 +406,13 @@ def get_talk_page(title):
     return api_req('query', params).results['query']['pages'].values()[0]['revisions'][0]['*']
 
 
-def get_backlinks(title, count=PER_CALL_LIMIT, cont_str='', **kwargs):
+def get_backlinks(title, count=PER_CALL_LIMIT, limit=DEFAULT_MAX_COUNT, cont_str='', **kwargs):
     ret = []
-    while len(ret) < count and cont_str is not None:
-        cur_count = min(count - len(ret), PER_CALL_LIMIT)
+    while len(ret) < limit and cont_str is not None:
         params = {'list': 'backlinks',
                   'bltitle': title,
                   'blnamespace': 0,
-                  'bllimit': cur_count
+                  'bllimit': PER_CALL_LIMIT,
                   }
         if cont_str:
             params['blcontinue'] = cont_str
@@ -427,20 +426,29 @@ def get_backlinks(title, count=PER_CALL_LIMIT, cont_str='', **kwargs):
     return ret
 
 
-def get_langlinks(title, **kwargs):
-    params = {'prop': 'langlinks',
-              'titles': title,
-              'lllimit': PER_CALL_LIMIT,  # TODO?
-              }
-    try:
-        query_results = api_req('query', params).results['query']['pages'].values()[0]['langlinks']
-    except KeyError:
-        query_results = []
-    ret = [link.get('lang') for link in query_results if link.get('lang')]
+def get_langlinks(title, limit=DEFAULT_MAX_COUNT, cont_str='', **kwargs):
+    ret = []
+    while len(ret) < limit and cont_str is not None:
+        params = {'prop': 'langlinks',
+                  'titles': title,
+                  'lllimit': PER_CALL_LIMIT,  # TODO?
+                  }
+        if cont_str:
+            params['llcontinue'] = cont_str
+        resp = api_req('query', params).results
+        if resp['query']['pages'].values()[0].get('langlinks') is None:
+            return []
+        langs = resp['query']['pages'].values()[0].get('langlinks')
+        for language in langs:
+            ret.append(language['lang'])
+        try:
+            cont_str = resp.results['query-continue']['langlinks']['llcontinue']
+        except:
+            cont_str = None
     return ret
 
 
-def get_interwikilinks(title, **kwargs):
+def get_interwikilinks(title, limit=DEFAULT_MAX_COUNT, cont_str='', **kwargs):
     params = {'prop': 'iwlinks',
               'titles': title,
               'iwlimit': 500,  # TODO?
