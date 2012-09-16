@@ -86,5 +86,5 @@ def dist_stats(vals):
         'skewness_trimmed': skewness(trimmed_vals),
         'kurtosis': kurtosis(vals),
         'kurtosis_trimmed': kurtosis(trimmed_vals),
-        'size': len(vals)
+        'count': len(vals) # used to be called size; sample/population size
     }
