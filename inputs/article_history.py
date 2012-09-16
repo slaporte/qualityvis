@@ -28,11 +28,11 @@ def tmpl_text_to_odict(text):
         k = k.strip()
         v = v.strip()
         if not k:
-            print 'blank key error', k
+            # blank key error
             #import pdb;pdb.set_trace()
             continue
         if k in ret:
-            print 'duplicate key error', k
+            # duplicate key error
             #import pdb;pdb.set_trace()
             continue
         ret[k] = v

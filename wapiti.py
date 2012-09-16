@@ -10,8 +10,6 @@ from sys import maxint
 from collections import namedtuple
 from functools import partial
 
-from progress import ProgressMeter
-
 IS_BOT = False
 
 if IS_BOT:
@@ -26,7 +24,9 @@ DEFAULT_TIMEOUT  = 15
 DEFAULT_HEADERS = { 'User-Agent': 'Loupe/0.0.0 Mahmoud Hashemi makuro@gmail.com' }
 DEFAULT_MAX_COUNT = maxint
 
-class WikiException(Exception): pass
+
+class WikiException(Exception):
+    pass
 PageIdentifier = namedtuple("PageIdentifier", "page_id, ns, title")
 Page = namedtuple("Page", "title, req_title, namespace, page_id, rev_id, rev_text, is_parsed, fetch_date, fetch_duration")
 RevisionInfo = namedtuple('RevisionInfo', 'page_title, page_id, namespace, rev_id, rev_parent_id, user_text, user_id, length, time, sha1, comment, tags')
@@ -35,14 +35,17 @@ RevisionInfo = namedtuple('RevisionInfo', 'page_title, page_id, namespace, rev_i
 def parse_timestamp(timestamp):
     return datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%SZ')
 
-import urllib
 import urllib2
 import socket
 socket.setdefaulttimeout(DEFAULT_TIMEOUT)
 from StringIO import StringIO
 import gzip
 
-class FakeResponse(object): pass
+
+class FakeResponse(object):
+    pass
+
+
 def fake_requests(url, params=None, headers=None, use_gzip=True):
     ret = FakeResponse()
     full_url = url
@@ -59,7 +62,7 @@ def fake_requests(url, params=None, headers=None, use_gzip=True):
         headers['Accept-encoding'] = 'gzip'
 
     req = requests.Request(url, params=params, headers=headers, method='GET', prefetch=False)
-    full_url = req.full_url  # oh lawd, usin requests to create the url for now 
+    full_url = req.full_url  # oh lawd, usin requests to create the url for now
     req = urllib2.Request(full_url, headers=headers)
     resp = urllib2.urlopen(req)
     resp_text = resp.read()
@@ -86,6 +89,7 @@ def get_url(url, params=None, raise_exc=True):
         else:
             resp.error = e
     return resp
+
 
 def get_json(*args, **kwargs):
     resp = get_url(*args, **kwargs)
@@ -217,8 +221,8 @@ def get_category_old(cat_name, count=PER_CALL_LIMIT, cont_str=""):
             print resp.error  # log
             raise
         ret.extend([PageIdentifier(page_id=cm['pageid'],
-                                   ns     =cm['ns'],
-                                   title  =cm['title'])
+                                   ns=cm['ns'],
+                                   title=cm['title'])
                      for cm in qres['categorymembers']
                      if cm.get('pageid')])
         try:
@@ -299,7 +303,7 @@ def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=PER_CA
         params['geinamespace'] = namespaces_str
     while len(ret) < limit and cont_str is not None:
         cur_count = min(limit - len(ret), PER_CALL_LIMIT)
-        params['geilimit']    = cur_count
+        params['geilimit'] = cur_count
         if cont_str:
             params['geicontinue'] = cont_str
 
@@ -324,9 +328,9 @@ def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=PER_CA
                 title = pi['title']
                 page_id = pi['pageid']
 
-            ret.append(PageIdentifier(title = title,
-                                      page_id = page_id,
-                                      ns = ns))
+            ret.append(PageIdentifier(title=title,
+                                      page_id=page_id,
+                                      ns=ns))
         try:
             cont_str = resp.results['query-continue']['embeddedin']['geicontinue']
         except:
@@ -385,15 +389,15 @@ def get_articles(page_ids=None, titles=None,
             if not page.get('pageid') or not page.get('title'):
                 continue
             title = page['title']
-            pa = Page( title = title,
-                       req_title = redirects.get(title, title),
-                       namespace = page['ns'],
-                       page_id = page['pageid'],
-                       rev_id = page['revisions'][0]['revid'],
-                       rev_text = page['revisions'][0]['*'],
-                       is_parsed = parsed,
-                       fetch_date = fetch_start_time,
-                       fetch_duration = fetch_end_time - fetch_start_time)
+            pa = Page( title=title,
+                       req_title=redirects.get(title, title),
+                       namespace=page['ns'],
+                       page_id=page['pageid'],
+                       rev_id=page['revisions'][0]['revid'],
+                       rev_text=page['revisions'][0]['*'],
+                       is_parsed=parsed,
+                       fetch_date=fetch_start_time,
+                       fetch_duration=fetch_end_time - fetch_start_time)
             ret.append(pa)
     return ret
 
@@ -524,18 +528,18 @@ def get_revision_infos(page_title=None, page_id=None, limit=PER_CALL_LIMIT, cont
         namespace = page_dict['ns']
 
         for rev in page_dict.get('revisions', []):
-            rev_info = RevisionInfo(page_title= page_title,
-                                    page_id   = page_id,
-                                    namespace = namespace,
-                                    rev_id    = rev['revid'],
-                                    rev_parent_id = rev['parentid'],
-                                    user_text = rev.get('user', '!userhidden'),  # user info can be oversighted
-                                    user_id = rev.get('userid', -1),
-                                    time = parse_timestamp(rev['timestamp']),
-                                    length = rev['size'],
-                                    sha1 = rev['sha1'],
-                                    comment = rev.get('comment', ''),  # comments can also be oversighted
-                                    tags = rev['tags'])
+            rev_info = RevisionInfo(page_title=page_title,
+                                    page_id=page_id,
+                                    namespace=namespace,
+                                    rev_id=rev['revid'],
+                                    rev_parent_id=rev['parentid'],
+                                    user_text=rev.get('user', '!userhidden'),  # user info can be oversighted
+                                    user_id=rev.get('userid', -1),
+                                    time=parse_timestamp(rev['timestamp']),
+                                    length=rev['size'],
+                                    sha1=rev['sha1'],
+                                    comment=rev.get('comment', ''),  # comments can also be oversighted
+                                    tags=rev['tags'])
             ret.append(rev_info)
     return ret
 
