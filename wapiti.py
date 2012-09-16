@@ -233,6 +233,21 @@ def get_category_old(cat_name, count=PER_CALL_LIMIT, cont_str=""):
     return ret
 
 
+def get_random(limit=10):
+    ret = []
+    while len(ret) < limit:
+        params = {
+            'list': 'random',
+            'rnnamespace': 0,
+            'rnlimit': 10,
+        }
+        resp = api_req('query', params)
+        ret.extend([PageIdentifier(title=page['title'],
+                                   page_id=page['id'],
+                                   ns=page['ns']) for page in resp.results['query']['random']])
+    return ret
+
+
 def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, cont_str=""):
     ret = []
     if not cat_name.startswith('Category:'):

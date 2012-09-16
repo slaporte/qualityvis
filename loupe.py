@@ -127,8 +127,13 @@ class ArticleLoupe(Greenlet):
 
 def evaluate_category(category, limit, output_file, **kwargs):
     file_name = output_file.name.partition('.')[0]
-    print 'Fetching members of category', str(category) + '...'
-    cat_mems = wapiti.get_category(category, count=limit, to_zero_ns=True)
+    if kwargs.get('random') > 0:
+        rand_limit = kwargs.get('random')
+        print 'Fetching ', str(rand_limit) + ' random articles...'
+        cat_mems = wapiti.get_random(rand_limit)
+    else:
+        print 'Fetching members of category', str(category) + '...'
+        cat_mems = wapiti.get_category(category, count=limit, to_zero_ns=True)
     print 'Creating Loupes for', len(cat_mems), 'articles in', str(category) + '...'
     loupes = []  # NOTE: only used in debug mode, uses a lot more ram
     results = OrderedDict()
@@ -211,6 +216,9 @@ def parse_args():
 
     parser.add_option("-q", "--quiet", dest="verbose", action="store_false",
                       help="suppress output (TODO)")
+
+    parser.add_option("-r", "--random", dest="random", type="int",
+                      default=0, help="get articles randomly")
     return parser.parse_args()
 
 from dashboard import LoupeDashboard
@@ -218,6 +226,7 @@ from dashboard import LoupeDashboard
 if __name__ == '__main__':
     opts, args = parse_args()
     kwargs = opts.__dict__
+    # TODO: better output filenames
     file_name = 'results/' + opts.category[:15].replace(' ', '_') + '-' + str(int(time.time())) + '.json'
     with codecs.open(file_name, 'w', 'utf-8') as of:
         kwargs['output_file'] = of
