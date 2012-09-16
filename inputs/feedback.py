@@ -7,6 +7,11 @@ class FeedbackV4(Input):
     def fetch(self):
         return wapiti.get_feedback_stats(page_id=self.page_id)
 
+    def process(self, f_res):
+        if not f_res:
+            return {}
+        else:
+            return super(FeedbackV4, self).process(f_res)
     stats = {
         'trustworthy': lambda f: f[0]['total'] / f[0]['count'] if f[0]['count'] else 0,
         'objective': lambda f: f[1]['total'] / f[1]['count'] if f[1]['count'] else 0,
