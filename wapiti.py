@@ -71,21 +71,21 @@ class Permissions(object):
     @property
     def is_full_prot(self):
         try:
-            if self.permissions['edit'].level < SYSOP or \
-                self.permissions['move'].level < SYSOP:
-                return False
-            else:
+            if self.permissions['edit'].level == SYSOP and \
+                self.permissions['move'].level == SYSOP:
                 return True
+            else:
+                return False
         except (KeyError, AttributeError):
             return False
 
     @property
     def is_semi_prot(self):
         try:
-            if self.permissions['edit'].level != AUTOCONFIRMED:
-                return False
-            else:
+            if self.permissions['edit'].level == AUTOCONFIRMED:
                 return True
+            else:
+                return False
         except (KeyError, AttributeError):
             return False
 
@@ -347,6 +347,7 @@ def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, cont_str=""):
             cont_str = resp.results['query-continue']['categorymembers']['gcmcontinue']
         except:
             cont_str = None
+    import pdb;pdb.set_trace()
     return ret
 
 
