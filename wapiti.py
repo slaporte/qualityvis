@@ -27,9 +27,67 @@ DEFAULT_MAX_COUNT = maxint
 
 class WikiException(Exception):
     pass
-PageIdentifier = namedtuple("PageIdentifier", "page_id, ns, title")
+PageIdentifier = namedtuple("PageIdentifier", "page_id, ns, title, perms")
 Page = namedtuple("Page", "title, req_title, namespace, page_id, rev_id, rev_text, is_parsed, fetch_date, fetch_duration")
 RevisionInfo = namedtuple('RevisionInfo', 'page_title, page_id, namespace, rev_id, rev_parent_id, user_text, user_id, length, time, sha1, comment, tags')
+
+
+NEW = 2
+AUTOCONFIRMED = 1
+SYSOP = 0
+Protection = namedtuple('Protection', 'level, expiry')
+PROTECTION_ACTIONS = ['create', 'edit', 'move', 'upload']
+
+
+class Permissions(object):
+    """
+    For more info on protection,
+    see https://en.wikipedia.org/wiki/Wikipedia:Protection_policy
+    """
+    levels = {
+        'new': NEW,
+        'autoconfirmed': AUTOCONFIRMED,
+        'sysop': SYSOP,
+    }
+
+    def __init__(self, protections):
+        self.permissions = {}
+        for p in protections:
+            if p['expiry'] != 'infinity':
+                expiry = parse_timestamp(p['expiry'])
+            else:
+                expiry = 'infinity'
+            level = self.levels[p['level']]
+            self.permissions[p['type']] = Protection(level, expiry)
+
+    @property
+    def has_protection(self):
+        return any([x.level != NEW for x in self.permissions.values()])
+
+    @property
+    def has_indef(self):
+        return any([x.expiry == 'infinity' for x in self.permissions.values()])
+
+    @property
+    def is_full_prot(self):
+        try:
+            if self.permissions['edit'].level < SYSOP or \
+                self.permissions['move'].level < SYSOP:
+                return False
+            else:
+                return True
+        except (KeyError, AttributeError):
+            return False
+
+    @property
+    def is_semi_prot(self):
+        try:
+            if self.permissions['edit'].level != AUTOCONFIRMED:
+                return False
+            else:
+                return True
+        except (KeyError, AttributeError):
+            return False
 
 
 def parse_timestamp(timestamp):
@@ -257,7 +315,7 @@ def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, cont_str=""):
         params = {'generator': 'categorymembers',
                   'gcmtitle':   cat_name,
                   'prop':       'info',
-                  'inprop':     'title|pageid|ns|subjectid',
+                  'inprop':     'title|pageid|ns|subjectid|protection',
                   'gcmlimit':    cur_count,
                   'gcmcontinue': cont_str}
         resp = api_req('query', params)
@@ -280,15 +338,15 @@ def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, cont_str=""):
             else:
                 title = cm['title']
                 page_id = cm['pageid']
-
+            perms = Permissions(cm.get('protection', {}))
             ret.append(PageIdentifier(title=title,
                                       page_id=page_id,
-                                      ns=namespace))
+                                      ns=namespace,
+                                      perms=perms))
         try:
             cont_str = resp.results['query-continue']['categorymembers']['gcmcontinue']
         except:
             cont_str = None
-
     return ret
 
 
@@ -298,7 +356,7 @@ def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=PER_CA
     cont_str = ""
     params = {'generator':  'embeddedin',
               'prop':       'info',
-              'inprop':     'title|pageid|ns|subjectid'}
+              'inprop':     'title|pageid|ns|subjectid|protection'}
     if page_title and page_id:
         raise ValueError('Expected one of page_title or page_id, not both.')
     elif page_title:
@@ -342,15 +400,15 @@ def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=PER_CA
             else:
                 title = pi['title']
                 page_id = pi['pageid']
-
+            perms = Permissions(pi.get('protection', {}))
             ret.append(PageIdentifier(title=title,
                                       page_id=page_id,
-                                      ns=ns))
+                                      ns=ns,
+                                      perms=perms,))
         try:
             cont_str = resp.results['query-continue']['embeddedin']['geicontinue']
         except:
             cont_str = None
-
     return ret
 
 
@@ -467,13 +525,25 @@ def get_langlinks(title, limit=DEFAULT_MAX_COUNT, cont_str='', **kwargs):
     return ret
 
 
-def get_interwikilinks(title, limit=DEFAULT_MAX_COUNT, cont_str='', **kwargs):
+def get_interwikilinks(title, **kwargs):
     params = {'prop': 'iwlinks',
               'titles': title,
               'iwlimit': 500,  # TODO?
               }
     try:
         query_results = api_req('query', params).results['query']['pages'].values()[0]['iwlinks']
+    except KeyError:
+        query_results = []
+    return query_results
+
+
+def get_protection(title, **kwargs):
+    params = {'prop': 'info',
+              'titles': title,
+              'inprop': 'protection',
+              }
+    try:
+        query_results = api_req('query', params).results['query']['pages'].values()[0]['protection']
     except KeyError:
         query_results = []
     return query_results
