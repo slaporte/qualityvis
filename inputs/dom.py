@@ -2,7 +2,6 @@ from base import Input
 from wapiti import get_url
 import wapiti
 from pyquery import PyQuery
-import pdb
 
 from stats import dist_stats
 
@@ -81,6 +80,7 @@ class DOM(Input):
 
     def process(self, f_res):
         ret = PyQuery(f_res.text).find('div#content')
+        ret('div#siteNotice').remove()
         return super(DOM, self).process(ret)
 
     # TODO: check pyquery errors
@@ -111,6 +111,8 @@ class DOM(Input):
         'hn_rellink_count': lambda f: len(f('div.rellink')), # "See also" link for a section
         'hn_dablink_count': lambda f: len(f('div.dablink')), # Disambiguation page links
         'hn_mainlink_count': lambda f: len(f('div.mainarticle')), # Link to main, expanded article
+        'hn_seealso_count': lambda f: len(f('div.seealso')), # Generic see also
+        'hn_relarticle_count': lambda f: len(f('div.relarticle')), # somehow distinct from rellink
         
         # Inline/link-based stats
         'ref_count': lambda f: len(f('sup.reference')),
@@ -133,10 +135,13 @@ class DOM(Input):
         'thumb_img_count': lambda f: len(f('div.thumb')),
         'thumb_left_count': lambda f: len(f('div.tleft')),
         'thumb_right_count': lambda f: len(f('div.tright')),
+        'image_map_count': lambda f: len(f('map')), # The clickable image construct (EasyTimeline)
+        'tex_count': lambda f: len(f('.tex')), # LaTeX/TeX used by mathy things
         'infobox_count': lambda f: len(f('.infobox')),
         'navbox_word': element_words_dist('.navbox'),
         'caption_word': element_words_dist('.thumbcaption'),
         'ogg_count': lambda f: len(f("a[href$='.ogg']")),
+        'svg_count': lambda f: len(f("img[src*='.svg']")),
         'pdf_count': lambda f: len(f("a[href$='.pdf']")),
         'midi_count': lambda f: len(f("a[href$='.mid']")),
         'geo_count': lambda f: len(f('.geo-dms')),
@@ -144,6 +149,8 @@ class DOM(Input):
         'metadata_link_count': lambda f: len(f('.metadata.plainlinks')),  # Commons related media
         'spoken_wp_count': lambda f: len(f('#section_SpokenWikipedia')),
         'wikitable_word': element_words_dist('table.wikitable'),
+        'gallery_li_count': lambda f: len(f('.gallery').children('li')),
+        'unicode_count': lambda f: len(f('.unicode, .Unicode')),
 
         # Template inspection, mostly fault detection
         'tmpl_delete': lambda f: len(f('.ambox-delete')),
@@ -185,4 +192,18 @@ class DOM(Input):
         'tmpl_update': lambda f: len(f('.ambox-Update')),
         'tmpl_wikify': lambda f: len(f('.ambox-Wikify')),
         'tmpl_multiple_issues': lambda f: len(f('.ambox-multiple_issues li')),
+
+        # Citation type statistics
+        'cite_cl': lambda f: len(f('.citation')), # not to be confused with cite_count
+        'cite_journal': lambda f: len(f('.citation.Journal')),
+        'cite_web': lambda f: len(f('.citation.web')),
+        'cite_news': lambda f: len(f('.citation.news')),
+        'cite_episode': lambda f: len(f('.citation.episode')),
+        'cite_newsgroup': lambda f: len(f('.citation.newgroup')),
+        'cite_patent': lambda f: len(f('.citation.patent')),
+        'cite_pressrelease': lambda f: len(f('.citation.pressrelease')),
+        'cite_report': lambda f: len(f('.citation.report')),
+        'cite_video': lambda f: len(f('.citation.video')),
+        'cite_videogame': lambda f: len(f('.citation.videogame')),
+        'cite_book': lambda f: len(f('.citation.book')),
     }

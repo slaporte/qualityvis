@@ -18,7 +18,7 @@ meta_features = {'title': OrangeType('s', 'meta'),
                  'ah_topic': OrangeType('s', 'meta'),
                  'ah_current': OrangeType('d', 'meta'),
                  'ah_actions': IGNORE,
-                 'assessment': IGNORE
+                 'a_assessment': IGNORE
                 }
 
 
@@ -61,7 +61,7 @@ def get_column_types(dataset, count=100):
             continue
         try:
             value_set = set(dataset[header])
-        except:
+        except Exception as e:
             import pdb;pdb.set_trace()
         try:
             [float(f) for f in value_set if f is not '']
@@ -87,6 +87,7 @@ def results_to_csv(file_name):
     results = load_results(file_name)
     flat = [flatten_dict(row) for row in results]
     column_names = get_column_names(flat)
+    column_names = sorted(column_names)
     tab_results = tablib.Dataset(headers=column_names)
     for row in flat:
         row_list = []

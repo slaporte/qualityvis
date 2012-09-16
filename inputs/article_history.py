@@ -132,11 +132,11 @@ class ArticleHistory(Input):
     stats = {
         'article_history': lambda f: len(f.get('actions')),
         'oldest_action_age': lambda f: age_as_str(f.get('actions')[0].date),
-        'recent_action_age': lambda f: age_as_str(f.get('actions')[-1].date),
+        'latest_action_age': lambda f: age_as_str(f.get('actions')[-1].date),
         'mainpage_age': lambda f: age_as_str(f.get('maindate')),
         'dyk_age': lambda f: age_as_str(f.get('dykdate')),
         'itn_age': lambda f: age_as_str(f.get('itndate')),
-        'ah_topic': lambda f: f.get('topic', None),
-        'ah_current': lambda f: f.get('current', None),
-        'ah_actions': lambda f: [{'type': action.type, 'result': action.result, 'date': str(action.date)} for action in f.get('actions')],
+        'topic': lambda f: f.get('topic', None),
+        'current': lambda f: f.get('current', None),
+        'actions': lambda f: [{'type': action.type, 'result': action.result, 'date': str(action.date)} for action in f.get('actions')],
     }
