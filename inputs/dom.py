@@ -17,7 +17,7 @@ def paragraph_counts(pq):
 
 
 def section_stats(headers):
-    hs = (h for h in headers if h.text_content() != 'Contents')
+    hs = [h for h in headers if h.text_content() != 'Contents']
     # how not to write Python: ['h'+str(i) for i in range(1, 8)]
     all_headers = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7']
     totals = []
@@ -42,21 +42,28 @@ def element_words_dist(elem):
     return lambda f: dist_stats([len(navbox.text_content().split()) for navbox in f(elem)])
 
 
+def get_root(pq):
+    try:
+        roottree = pq.root  # for pyquery on lxml 2
+    except AttributeError:
+        roottree = pq[0].getroottree()  # for lxml 3
+    return roottree
+
 def pq_contains(elem, search):
     """Just a quick factory function to create lambdas to do xpath in a cross-version way"""
     def xpath_search(f):
         if not f:
             return 0
         else:
-            try:
-                roottree = f.root  # for pyquery on lxml 2
-            except AttributeError:
-                roottree = f[0].getroottree()  # for lxml 3
+            roottree = get_root(f)
             return len(roottree.xpath(u'//{e}[contains(., "{s}")]'.format(e=elem, s=search)))
     return xpath_search
 
 
+
 class DOM(Input):
+    prefix = 'd'
+    
     def api_fetch(self):
         """
         Deprecated fetch() that gets parsed content from the API.
@@ -78,77 +85,104 @@ class DOM(Input):
 
     # TODO: check pyquery errors
     stats = {
-        'words':       lambda f: len(f('p').text().split()),
-        'p_dist':           lambda f: dist_stats(paragraph_counts(f)),
-        'references':  lambda f: len(f('.reference')),
-        'sources':     lambda f: len(f('li[id^="cite_note"]')),
-        'reference_sections': lambda f: len(f('#References')),
-        'external_links_sections': lambda f:  len(f('#External_links')),
-        'intro_ps': lambda f: len(f('#toc').prevAll('p')),
-        'new_internal_links': lambda f: len(f('.new')),
-        'infoboxes': lambda f: len(f('.infobox')),
-        'navbox_words_dist': element_words_dist('.navbox'),
-        'footnotes_in_section': lambda f: len(f('#Footnotes').parent().nextAll('div').children('ul').children('li')),
-        'external_links_in_section': lambda f: len(f('#External_links').parent().nextAll('ul').children()),
-        'see_also_links_in_section': lambda f: len(f('#See_also').parent().nextAll('ul').children()),
-        'external_links_totals': lambda f: len(f('.external')),
-        'links':      lambda f: len([text.text_content() for text in f('p a:not([class])[href^="/wiki/"]')]),
-        'dom_internal_links': lambda f: len(f('p a:not([class])[href^="/wiki/"]')),
-        'ref_needed_spans': pq_contains('span', 'citation'),
-        'pov_statement_spans': pq_contains('span', 'neutrality'),
-        'categories': lambda f: len(f("#mw-normal-catlinks ul li")),
-        'hidden_cats': lambda f: len(f('#mw-hidden-catlinks ul li')),
-        'images': lambda f: len(f('img')),
-        'caption_words_dist': element_words_dist('.thumbcaption'),
-        'ogg': lambda f: len(f("a[href$='ogg']")),
-        'mid': lambda f: len(f("a[href$='mid']")),
-        'geo': lambda f: len(f('.geo-dms')),
-        'blockquote': lambda f: len(f('blockquote')),
-        'related_section_links': lambda f: len(f('.rellink')),
-        'metadata_links': lambda f: len(f('.metadata.plainlinks')),  # Commons related media
-        'spoken_wp': lambda f: len(f('#section_SpokenWikipedia')),
-        'wikitable_dist': element_words_dist('table.wikitable'),
-        'templ_delete': lambda f: len(f('.ambox-delete')),
-        'templ_autobiography': lambda f: len(f('.ambox-autobiography')),
-        'templ_advert': lambda f: len(f('.ambox-Advert')),
-        'templ_citation_style': lambda f: len(f('.ambox-citation_style')),
-        'templ_cleanup': lambda f: len(f('.ambox-Cleanup')),
-        'templ_COI': lambda f: len(f('.ambox-COI')),
-        'templ_confusing': lambda f: len(f('.ambox-confusing')),
-        'templ_context': lambda f: len(f('.ambox-Context')),
-        'templ_copy_edit': lambda f: len(f('.ambox-Copy_edit')),
-        'templ_dead_end': lambda f: len(f('.ambox-dead_end')),
-        'templ_disputed': lambda f: len(f('.ambox-disputed')),
-        'templ_essay_like': lambda f: len(f('.ambox-essay-like')),
-        'templ_expert': pq_contains('td', 'needs attention from an expert'),
-        'templ_fansight': pq_contains('td', 's point of view'),
-        'templ_globalize': pq_contains('td', 'do not represent a worldwide view'),
-        'templ_hoax': pq_contains('td', 'hoax'),
-        'templ_in_universe': lambda f: len(f('.ambox-in-universe')),
-        'templ_intro_rewrite': lambda f: len(f('.ambox-lead_rewrite')),
-        'templ_merge': pq_contains('td', 'suggested that this article or section be merged'),
-        'templ_no_footnotes': lambda f: len(f('.ambox-No_footnotes')),
-        'templ_howto': pq_contains('td', 'contains instructions, advice, or how-to content'),
-        'templ_non_free': lambda f: len(f('.ambox-non-free')),
-        'templ_notability': lambda f: len(f('.ambox-Notability')),
-        'templ_not_english': lambda f: len(f('.ambox-not_English')),
-        'templ_NPOV': lambda f: len(f('.ambox-POV')),
-        'templ_original_research': lambda f: len(f('.ambox-Original_research')),
-        'templ_orphan': lambda f: len(f('.ambox-Orphan')),
-        'templ_plot': lambda f: len(f('.ambox-Plot')),
-        'templ_primary_sources': lambda f: len(f('.ambox-Primary_sources')),
-        'templ_prose': lambda f: len(f('.ambox-Prose')),
-        'templ_refimprove': lambda f: len(f('.ambox-Refimprove')),
-        'templ_sections': lambda f: len(f('.ambox-sections')),
-        'templ_tone': lambda f: len(f('.ambox-Tone')),
-        'templ_tooshort': lambda f: len(f('.ambox-lead_too_short')),
-        'templ_style': lambda f: len(f('.ambox-style')),
-        'templ_uncategorized': lambda f: len(f('.ambox-uncategorized')),
-        'templ_update': lambda f: len(f('.ambox-Update')),
-        'templ_wikify': lambda f: len(f('.ambox-Wikify')),
-        'templ_multiple_issues': lambda f: len(f('.ambox-multiple_issues li')),
-        'h2_dist': lambda f: section_stats(f('h2')),
-        'h3_dist': lambda f: section_stats(f('h3')),
-        'h4_dist': lambda f: section_stats(f('h4')),
-        'h5_dist': lambda f: section_stats(f('h5')),
+        # General page/page structure stats
+        'word_count': lambda f: len(f('p').text().split()),
+        'p': lambda f: dist_stats(paragraph_counts(f)),
+
+        # Section-based page structure stats
+        'h2': lambda f: section_stats(f('h2')),
+        'h3': lambda f: section_stats(f('h3')),
+        'h4': lambda f: section_stats(f('h4')),
+        'h5': lambda f: section_stats(f('h5')),
+        'refbegin_count': lambda f: len(f('div.refbegin')),
+        'reflist_count': lambda f: len(f('div.reflist')),
+        'ref_text_count': lambda f: len(f('.reference-text')),
+        'has_ext_link_sect': lambda f:  len(f('#External_links')),
+        'ext_link_sect_li_count': lambda f: len(f('#External_links').parent().nextAll('ul').children()),
+        'see_also_sect_li_count': lambda f: len(f('#See_also').parent().nextAll('ul').children()),
+        'has_ref_sect': lambda f: len(f('#References')),
+        'has_notes_sect': lambda f: len(f('#Notes')),
+        'fr_sect_count': lambda f: len(f('#Further_reading')),
+        
+        # Lead stats; the introductory area before the TOC
+        'lead_p_count': lambda f: len(f('#toc').prevAll('p')),
+        
+        # Hatnotes
+        'hn_rellink_count': lambda f: len(f('div.rellink')), # "See also" link for a section
+        'hn_dablink_count': lambda f: len(f('div.dablink')), # Disambiguation page links
+        'hn_mainlink_count': lambda f: len(f('div.mainarticle')), # Link to main, expanded article
+        
+        # Inline/link-based stats
+        'ref_count': lambda f: len(f('sup.reference')),
+        'cite_count': lambda f: len(f('li[id^="cite_note"]')),
+        'red_link_count': lambda f: len(f('.new')), # New internal links, aka "red links"
+        'ext_link_count': lambda f: len(f('.external')),
+        'int_link_text': lambda f: dist_stats([ len(text.text_content()) for text in f('p a[href^="/wiki/"]')]),
+        'dead_link_count': lambda f: len(f('a[title^="Wikipedia:Link rot"]')),
+        'ref_needed_span_count': pq_contains('span', 'citation'),
+        'pov_span_count': pq_contains('span', 'neutrality'),
+
+        # DOM-based category stats, not to be confused with the API-based Input
+        'cat_count': lambda f: len(f("#mw-normal-catlinks ul li")),
+        'hidden_cat_count': lambda f: len(f('#mw-hidden-catlinks ul li')),
+        
+        # Media/page richness stats
+        'wiki_file_link_count': lambda f: len(f("a[href*='/wiki/File:']")),
+        'ipa_count': lambda f: len(f('span[title="pronunciation:"]')),
+        'all_img_count': lambda f: len(f('img')),
+        'thumb_img_count': lambda f: len(f('div.thumb')),
+        'thumb_left_count': lambda f: len(f('div.tleft')),
+        'thumb_right_count': lambda f: len(f('div.tright')),
+        'infobox_count': lambda f: len(f('.infobox')),
+        'navbox_word': element_words_dist('.navbox'),
+        'caption_word': element_words_dist('.thumbcaption'),
+        'ogg_count': lambda f: len(f("a[href$='.ogg']")),
+        'pdf_count': lambda f: len(f("a[href$='.pdf']")),
+        'midi_count': lambda f: len(f("a[href$='.mid']")),
+        'geo_count': lambda f: len(f('.geo-dms')),
+        'blockquote_count': lambda f: len(f('blockquote')),
+        'metadata_link_count': lambda f: len(f('.metadata.plainlinks')),  # Commons related media
+        'spoken_wp_count': lambda f: len(f('#section_SpokenWikipedia')),
+        'wikitable_word': element_words_dist('table.wikitable'),
+
+        # Template inspection, mostly fault detection
+        'tmpl_delete': lambda f: len(f('.ambox-delete')),
+        'tmpl_autobiography': lambda f: len(f('.ambox-autobiography')),
+        'tmpl_advert': lambda f: len(f('.ambox-Advert')),
+        'tmpl_citation_style': lambda f: len(f('.ambox-citation_style')),
+        'tmpl_cleanup': lambda f: len(f('.ambox-Cleanup')),
+        'tmpl_COI': lambda f: len(f('.ambox-COI')),
+        'tmpl_confusing': lambda f: len(f('.ambox-confusing')),
+        'tmpl_context': lambda f: len(f('.ambox-Context')),
+        'tmpl_copy_edit': lambda f: len(f('.ambox-Copy_edit')),
+        'tmpl_dead_end': lambda f: len(f('.ambox-dead_end')),
+        'tmpl_disputed': lambda f: len(f('.ambox-disputed')),
+        'tmpl_essay_like': lambda f: len(f('.ambox-essay-like')),
+        'tmpl_expert': pq_contains('td', 'needs attention from an expert'),
+        'tmpl_fansight': pq_contains('td', 's point of view'),
+        'tmpl_globalize': pq_contains('td', 'do not represent a worldwide view'),
+        'tmpl_hoax': pq_contains('td', 'hoax'),
+        'tmpl_in_universe': lambda f: len(f('.ambox-in-universe')),
+        'tmpl_intro_rewrite': lambda f: len(f('.ambox-lead_rewrite')),
+        'tmpl_merge': pq_contains('td', 'suggested that this article or section be merged'),
+        'tmpl_no_footnotes': lambda f: len(f('.ambox-No_footnotes')),
+        'tmpl_howto': pq_contains('td', 'contains instructions, advice, or how-to content'),
+        'tmpl_non_free': lambda f: len(f('.ambox-non-free')),
+        'tmpl_notability': lambda f: len(f('.ambox-Notability')),
+        'tmpl_not_english': lambda f: len(f('.ambox-not_English')),
+        'tmpl_NPOV': lambda f: len(f('.ambox-POV')),
+        'tmpl_original_research': lambda f: len(f('.ambox-Original_research')),
+        'tmpl_orphan': lambda f: len(f('.ambox-Orphan')),
+        'tmpl_plot': lambda f: len(f('.ambox-Plot')),
+        'tmpl_primary_sources': lambda f: len(f('.ambox-Primary_sources')),
+        'tmpl_prose': lambda f: len(f('.ambox-Prose')),
+        'tmpl_refimprove': lambda f: len(f('.ambox-Refimprove')),
+        'tmpl_sections': lambda f: len(f('.ambox-sections')),
+        'tmpl_tone': lambda f: len(f('.ambox-Tone')),
+        'tmpl_tooshort': lambda f: len(f('.ambox-lead_too_short')),
+        'tmpl_style': lambda f: len(f('.ambox-style')),
+        'tmpl_uncategorized': lambda f: len(f('.ambox-uncategorized')),
+        'tmpl_update': lambda f: len(f('.ambox-Update')),
+        'tmpl_wikify': lambda f: len(f('.ambox-Wikify')),
+        'tmpl_multiple_issues': lambda f: len(f('.ambox-multiple_issues li')),
     }

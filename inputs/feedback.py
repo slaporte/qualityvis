@@ -3,6 +3,7 @@ from base import Input
 
 
 class FeedbackV4(Input):
+    prefix = 'f4'
     def fetch(self):
         return wapiti.get_feedback_stats(page_id=self.page_id)
 
@@ -21,6 +22,7 @@ class FeedbackV4(Input):
 
 
 class FeedbackV5(Input):
+    prefix = 'f5'
     def fetch(self):
         return wapiti.get_feedbackv5_count(page_id=self.page_id)
 

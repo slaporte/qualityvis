@@ -12,6 +12,7 @@ def find_tmpl(text):
 
 
 class Assessment(Input):
+    prefix = 'a'
     def fetch(self):
         return wapiti.get_talk_page(self.page_title)
 

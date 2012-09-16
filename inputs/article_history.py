@@ -108,6 +108,8 @@ def age_as_str(date):
 
 
 class ArticleHistory(Input):
+    prefix = 'ah'
+    
     def fetch(self):
         return wapiti.get_talk_page(self.page_title)
 
