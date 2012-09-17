@@ -41,8 +41,8 @@ PROTECTION_ACTIONS = ['create', 'edit', 'move', 'upload']
 
 class Permissions(object):
     """
-    For more info on protection,
-    see https://en.wikipedia.org/wiki/Wikipedia:Protection_policy
+    For more info on protection, see:
+       https://en.wikipedia.org/wiki/Wikipedia:Protection_policy
     """
     levels = {
         'new': NEW,
@@ -304,7 +304,7 @@ def get_random(limit=10):
         }
         resp = api_req('query', params)
         for page_id, info in resp.results['query']['pages'].iteritems():
-            perms = Permissions(info.get('protection', {}))
+            perms = Permissions(info.get('protection'))
             ret.append(PageIdentifier(title=info['title'],
                                        page_id=info['pageid'],
                                        ns=info['ns'],
@@ -334,17 +334,21 @@ def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, cont_str=""):
             if not cm.get('pageid'):
                 continue
             namespace = cm['ns']
-            if namespace != 0 and to_zero_ns:  # non-Main/zero namespace
+            title = cm['title']
+            page_id = cm['pageid']
+            if to_zero_ns:  # non-Main/zero namespace
                 try:
-                    _, _, title = cm['title'].partition(':')
                     page_id = cm['subjectid']
-                    namespace = 0
                 except KeyError as e:
-                    continue  # TODO: log
-            else:
-                title = cm['title']
-                page_id = cm['pageid']
-            perms = Permissions(cm.get('protection', {}))
+                    pass # TODO: log
+                else:
+                    if namespace == 1:
+                        _, _, title = cm['title'].partition(':')
+                    else:
+                        title = cm['title'].replace(' talk:', '')
+                    namespace = namespace - 1
+
+            perms = Permissions(cm.get('protection'))
             ret.append(PageIdentifier(title=title,
                                       page_id=page_id,
                                       ns=namespace,
@@ -355,6 +359,19 @@ def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, cont_str=""):
             cont_str = None
     return ret
 
+
+def get_category_recursive(cat_name, count=DEFAULT_MAX_COUNT, *a, **kw):
+    ret = set() # TODO: uniqueify list in order
+    cats = [cat_name]
+    seen_cats = set()
+    while len(ret) < count and len(cats) > 0:
+        cur_cat = cats.pop()
+        cur_res = get_category(cur_cat, count, *a, **kw)
+        for r in cur_res:
+            if r.ns == 14: #Category namespace
+                if r.title not in seen_cats:
+                    cats.append(r.title)
+                    seen_cats.add(r.title)
 
 # TODO: default 'limit' to infinity/all
 def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=PER_CALL_LIMIT, to_zero_ns=True):
