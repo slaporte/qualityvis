@@ -295,14 +295,19 @@ def get_random(limit=10):
     ret = []
     while len(ret) < limit:
         params = {
-            'list': 'random',
-            'rnnamespace': 0,
-            'rnlimit': 10,
+            'generator': 'random',
+            'grnnamespace': 0,
+            'grnlimit': 10,
+            'prop': 'info',
+            'inprop': 'subjectid|protection',
         }
         resp = api_req('query', params)
-        ret.extend([PageIdentifier(title=page['title'],
-                                   page_id=page['id'],
-                                   ns=page['ns']) for page in resp.results['query']['random']])
+        for page_id, info in resp.results['query']['pages'].iteritems():
+            perms = Permissions(info.get('protection', {}))
+            ret.append(PageIdentifier(title=info['title'],
+                                       page_id=info['pageid'],
+                                       ns=info['ns'],
+                                       perms=perms))
     return ret
 
 
@@ -347,7 +352,6 @@ def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, cont_str=""):
             cont_str = resp.results['query-continue']['categorymembers']['gcmcontinue']
         except:
             cont_str = None
-    import pdb;pdb.set_trace()
     return ret
 
 
