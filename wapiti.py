@@ -50,7 +50,8 @@ class Permissions(object):
         'sysop': SYSOP,
     }
 
-    def __init__(self, protections):
+    def __init__(self, protections=None):
+        protections = protections or {}
         self.permissions = {}
         for p in protections:
             if p['expiry'] != 'infinity':
@@ -485,7 +486,12 @@ def get_talk_page(title):
               'titles': 'Talk:' + title,
               'rvprop': 'content',
              }
-    return api_req('query', params).results['query']['pages'].values()[0]['revisions'][0]['*']
+    resp = api_req('query', params).results
+    try:
+        talk_page = resp['query']['pages'].values()[0]['revisions'][0]['*']
+    except KeyError as e:
+        talk_page = ''
+    return talk_page
 
 
 def get_backlinks(title, count=PER_CALL_LIMIT, limit=DEFAULT_MAX_COUNT, cont_str='', **kwargs):

@@ -108,16 +108,16 @@ def all_revisions(revisions):
         }
     else:
         ret = {
-            'all': None,
-            '2_days': None,
-            '30_days': None,
-            '90_days': None,
-            '365_days': None,
-            'latest_date': None,
-            'latest_age': None,
-            'first_date': None,
-            'first_age': None,
-            'interval': None,
+            'all': '',
+            '2_days': '',
+            '30_days': '',
+            '90_days': '',
+            '365_days': '',
+            'latest_date': '',
+            'latest_age': '',
+            'first_date': '',
+            'first_age': '',
+            'interval': '',
         }
     return ret
 
