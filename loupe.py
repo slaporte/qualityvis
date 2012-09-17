@@ -21,12 +21,15 @@ ALL = 20000
 from inputs import DEFAULT_INPUTS, DOM, Revisions, Assessment
 from dashboard import LoupeDashboard
 
-limits = {  # Backlinks: 100,
+DEFAULT_LIMITS = {  # Backlinks: 100,
             # FeedbackV4: 100,
           DOM: 40,
           Revisions: 20,
           Assessment: 20}
 
+
+def get_filename(prefix=''):
+    return prefix.replace(' ', '_') + '-' + str(int(time.time()))
 
 class FancyInputPool(gevent.pool.Pool):
     def __init__(self, limits, *args, **kwargs):
@@ -124,72 +127,72 @@ class ArticleLoupe(Greenlet):
     def get_flat_results(self):
         return flatten_dict(self.results)
 
+class Louper(object):
+    # TODO: maybe have a mode where it fills in failed stats?
+    # TODO: maybe accept a config object of some sort
+    def __init__(self, page_ds, **kwargs):
+        self.page_ds = page_ds
+        self.total_count = len(page_ds)
+        try:
+            self.input_classes = kwargs['inputs']
+            filename = kwargs['filename']
+            self.concurrency = kwargs.get('concurrency', DEFAULT_CONC)
+            self.limits = kwargs.get('limits', DEFAULT_LIMITS)
+            self.debug = kwargs.get('debug', False)
+        except KeyError as ke:
+            raise ValueError('Louper expected argument '+str(ke))
 
-def evaluate_category(category, limit, output_file, **kwargs):
-    file_name = output_file.name.partition('.')[0]
-    if kwargs.get('random') > 0:
-        rand_limit = kwargs.get('random')
-        print 'Fetching ', str(rand_limit) + ' random articles...'
-        cat_mems = wapiti.get_random(rand_limit)
-    else:
-        print 'Fetching members of category', str(category) + '...'
-        cat_mems = wapiti.get_category(category, count=limit, to_zero_ns=True)
-    print 'Creating Loupes for', len(cat_mems), 'articles in', str(category) + '...'
-    loupes = []  # NOTE: only used in debug mode, uses a lot more ram
-    results = OrderedDict()
-    loupe_pool = gevent.pool.Pool(kwargs.get('concurrency', DEFAULT_CONC))
-    loupe_pool.total_articles = len(cat_mems)
-    create_i = 0
-    failed_stats = defaultdict(list)
-    fetch_failures = defaultdict(list)
-    dash = LoupeDashboard(loupe_pool, results, inputs=DEFAULT_INPUTS, failed_stats=failed_stats, fetch_failures=fetch_failures)
-    dash.run()
-
-    def loupe_on_complete(grnlt):
-        loupe = grnlt
-        results[loupe.title] = loupe.to_dict()
+        self.output_file = codecs.open(filename, 'w', 'utf-8')
+        self.loupes = [] # NOTE: only used in debug mode, uses a lot more ram
+        self.results = OrderedDict()
+        self.failed_stats = defaultdict(list)
+        self.fetch_failures = defaultdict(list)
+        self.input_pool = FancyInputPool(self.limits)
+        self.loupe_pool = gevent.pool.Pool(self.concurrency)
+        
+    def run(self):
+        print 'Creating Loupes for', len(self.page_ds), 'articles...'
+        create_i = 0
+        for pd in self.page_ds:
+            al = ArticleLoupe(pd.title, pd.page_id, input_pool=self.input_pool, input_classes=self.input_classes)
+            create_i += 1
+            al.create_i = create_i
+            al.link(self.on_loupe_complete)
+            self.loupe_pool.start(al)
+        self.loupe_pool.join()
+        
+    def on_loupe_complete(self, loupe):
+        self.results[loupe.title] = loupe.to_dict()
         msg_params = {'cr_i': loupe.create_i,
-                      'co_i': len(results),
-                      'count': len(cat_mems),
+                      'co_i': len(self.results),
+                      'count': self.total_count,
                       'title': loupe.title,
                       'dur': time.time() - loupe.times['create']}
         log_msg = u'#{co_i}/{count} (#{cr_i}) "{title}" took {dur:.4f} seconds'.format(**msg_params)
         for inpt in loupe.inputs:
             status = inpt.status
             if not status.get('fetch_succeeded'):
-                fetch_failures[loupe.title].append(inpt.class_name)
+                self.fetch_failures[loupe.title].append(inpt.class_name)
             for stat in status.get('failed_stats'):
                 stat_failure = (inpt.class_name, stat, str(loupe.results[stat]))
-                failed_stats[stat_failure].append(loupe.title)
+                self.failed_stats[stat_failure].append(loupe.title)
         print log_msg
         #import pdb;pdb.set_trace()
         output_dict = loupe.results
         output_dict['title'] = loupe.title
         output_dict['id'] = loupe.page_id
         output_dict['times'] = loupe.times
-        output_file.write(json.dumps(output_dict, default=str))
-        output_file.write('\n')
-        if kwargs.get('debug'):
-            loupes.append(loupe)
+        
+        self.output_file.write(json.dumps(output_dict, default=str))
+        self.output_file.write('\n')
 
-    fancy_pool = FancyInputPool(limits)
-    for cm in cat_mems:
-        al = ArticleLoupe(cm.title, cm.page_id, input_pool=fancy_pool, input_classes=DEFAULT_INPUTS)
-        create_i += 1
-        al.create_i = create_i
-        al.link(loupe_on_complete)
-        loupe_pool.start(al)
-    loupe_pool.join()
+        if self.debug:
+            self.loupes.append(loupe)
 
-    report_name = file_name + '-report.html'
-    with codecs.open(report_name, 'w', 'utf-8') as rf:
-        rf.write(dash.get_report())
-
-    if kwargs.get('debug'):
-        import pdb;pdb.set_trace()
-# check for errors:
-# [al.title for al in loupes if any([isinstance(r, Exception) for r in al.results.values()])]
-
+    def close(self):
+        # TODO:  might want to find a better way of doin this
+        self.output_file.close()
+            
 
 def parse_args():
     parser = OptionParser()
@@ -217,17 +220,44 @@ def parse_args():
     parser.add_option("-q", "--quiet", dest="verbose", action="store_false",
                       help="suppress output (TODO)")
 
-    parser.add_option("-r", "--random", dest="random", type="int",
-                      default=0, help="get articles randomly")
+    parser.add_option("-r", "--random", dest="random",
+                      action="store_true", default=False,
+                      help="get articles randomly")
     return parser.parse_args()
 
 from dashboard import LoupeDashboard
 
-if __name__ == '__main__':
+def main():
     opts, args = parse_args()
     kwargs = opts.__dict__
     # TODO: better output filenames
-    file_name = 'results/' + opts.category[:15].replace(' ', '_') + '-' + str(int(time.time())) + '.json'
-    with codecs.open(file_name, 'w', 'utf-8') as of:
-        kwargs['output_file'] = of
-        evaluate_category(**opts.__dict__)
+    
+    if kwargs.get('random'):
+        print 'Fetching ', opts.limit, ' random articles...'
+        page_ds = wapiti.get_random(opts.limit)
+        filename = get_filename('random')
+    else:
+        print 'Fetching members of category', opts.category, '...'
+        page_ds = wapiti.get_category(opts.category, count=opts.limit, to_zero_ns=True)
+        filename = get_filename(opts.category[:15])
+
+    res_filename = 'results/'+filename+'.json'
+    report_filename = 'results/' + filename + '-report.html'
+    
+    lpr = Louper(page_ds, filename=res_filename, inputs=DEFAULT_INPUTS, **kwargs)
+
+    dash = LoupeDashboard(lpr)
+    dash.run()
+
+    try:
+        lpr.run()
+    finally:
+        lpr.close()
+        with codecs.open(report_filename, 'w', 'utf-8') as rf:
+            rf.write(dash.get_report())
+        if kwargs.get('debug'):
+            import pdb;pdb.set_trace()
+
+
+if __name__ == '__main__':
+    main()

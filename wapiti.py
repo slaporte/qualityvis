@@ -50,7 +50,8 @@ class Permissions(object):
         'sysop': SYSOP,
     }
 
-    def __init__(self, protections):
+    def __init__(self, protections=None):
+        protections = protections or {}
         self.permissions = {}
         for p in protections:
             if p['expiry'] != 'infinity':
@@ -302,7 +303,9 @@ def get_random(limit=10):
         resp = api_req('query', params)
         ret.extend([PageIdentifier(title=page['title'],
                                    page_id=page['id'],
-                                   ns=page['ns']) for page in resp.results['query']['random']])
+                                   ns=page['ns'],
+                                   perms=Permissions())
+                    for page in resp.results['query']['random']])
     return ret
 
 
@@ -347,7 +350,6 @@ def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, cont_str=""):
             cont_str = resp.results['query-continue']['categorymembers']['gcmcontinue']
         except:
             cont_str = None
-    import pdb;pdb.set_trace()
     return ret
 
 

@@ -37,20 +37,21 @@ def find_port(host=DEFAULT_HOST, start_port=DEFAULT_PORT, end_port=None):
 
 # TODO: add ortellius load to meta
 
-
 class LoupeDashboard(Bottle):
 
-    def __init__(self, loupe_pool, results, inputs=None, failed_stats=None, fetch_failures=None, *args, **kwargs):
+    def __init__(self, louper, *args, **kwargs):
         super(LoupeDashboard, self).__init__(*args, **kwargs)
-        self.loupe_pool = loupe_pool
-        self.results = results
-        self.inputs = inputs
+        self.loupe_pool = louper.loupe_pool
+        self.total_loupes = louper.total_count
+        self.results = louper.results
+        self.inputs = louper.input_classes
+        self.failed_stats = louper.failed_stats
+        self.fetch_failures = louper.fetch_failures
+        
         self.tpool = None
         self.start_time = kwargs.get('start_time') or time.time()
         self.start_cmd = kwargs.get('start_cmd') or ' '.join(sys.argv)
         self.host_machine = kwargs.get('hostname') or socket.gethostname()
-        self.failed_stats = failed_stats
-        self.fetch_failures = fetch_failures
         self.route('/', callback=self.render_dashboard, template='dashboard')
         self.route('/summary', callback=self.get_summary_dict, template='summary')
         self.route('/all_results', callback=self.get_all_results)
@@ -83,7 +84,7 @@ class LoupeDashboard(Bottle):
                 'complete_count': len(self.results),
                 'success_count': success_count,
                 'failure_count': failure_count,
-                'total_articles': self.loupe_pool.total_articles,
+                'total_articles': self.total_loupes,
                 }
         if with_meta:
             ret['meta'] = self.get_meta_dict()
