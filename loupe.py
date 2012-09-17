@@ -31,6 +31,7 @@ DEFAULT_LIMITS = {  # Backlinks: 100,
 def get_filename(prefix=''):
     return prefix.replace(' ', '_') + '-' + str(int(time.time()))
 
+
 class FancyInputPool(gevent.pool.Pool):
     def __init__(self, limits, *args, **kwargs):
         self.limits = limits if limits is not None else {}
@@ -231,7 +232,7 @@ def main():
     opts, args = parse_args()
     kwargs = opts.__dict__
     # TODO: better output filenames
-    
+
     if kwargs.get('random'):
         print 'Fetching ', opts.limit, ' random articles...'
         page_ds = wapiti.get_random(opts.limit)
