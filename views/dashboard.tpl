@@ -95,6 +95,8 @@
                 <td class="input-success">
                 %elif in_complete:
                 <td class="input-failure">
+                %elif in_attempts > 0:
+                <td class="input-retried">
                 %else:
                 <td class="input-incomplete">
                 %end
