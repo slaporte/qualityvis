@@ -18,14 +18,13 @@ DEFAULT_PER_CALL = 1  # TODO: make a configurable dictionary of chunk sizes
 DEFAULT_TIMEOUT = 30
 ALL = 20000
 
-from inputs import DEFAULT_INPUTS, DOM, Revisions, Assessment
+from inputs import DEFAULT_INPUTS, DOM, Revisions
 from dashboard import LoupeDashboard
 
 DEFAULT_LIMITS = {  # Backlinks: 100,
             # FeedbackV4: 100,
           DOM: 40,
-          Revisions: 20,
-          Assessment: 20}
+          Revisions: 20}
 
 
 def get_filename(prefix=''):

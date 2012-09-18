@@ -19,7 +19,7 @@ meta_features = {'title': OrangeType('s', 'meta'),
                  'ah_topic': OrangeType('s', 'meta'),
                  'ah_current': CLASS,
                  'ah_actions': IGNORE,
-                 'a_assessment': IGNORE
+                 'ah_assessment': IGNORE
                 }
 DEFAULT_COLUMNS = ['d_ogg_count', 'd_h3_header_skewness', 'd_h3_header_skewness_trimmed', 'd_h3_header_std_dev', 'd_h3_header_std_dev_trimmed', 'd_h3_header_variance', 'ah_current', 'title', 'id', 'ah_topic']
 

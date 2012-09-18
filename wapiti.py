@@ -35,7 +35,7 @@ socket.setdefaulttimeout(DEFAULT_TIMEOUT) # TODO: better timeouts for fake reque
 
 class WikiException(Exception):
     pass
-PageIdentifier = namedtuple("PageIdentifier", "page_id, ns, title, perms")
+PageIdentifier = namedtuple("PageIdentifier", "page_id, ns, title")
 Page = namedtuple("Page", "title, req_title, namespace, page_id, rev_id, rev_text, is_parsed, fetch_date, fetch_duration")
 RevisionInfo = namedtuple('RevisionInfo', 'page_title, page_id, namespace, rev_id, rev_parent_id, user_text, user_id, length, time, sha1, comment, tags')
 
@@ -75,8 +75,8 @@ PROTECTION_ACTIONS = ['create', 'edit', 'move', 'upload']
 
 class Permissions(object):
     """
-    For more info on protection, see:
-       https://en.wikipedia.org/wiki/Wikipedia:Protection_policy
+    For more info on protection,
+    see https://en.wikipedia.org/wiki/Wikipedia:Protection_policy
     """
     levels = {
         'new': NEW,
@@ -131,6 +131,7 @@ def parse_timestamp(timestamp):
 
 class FakeResponse(object):
     pass
+
 
 def fake_requests(url, params=None, headers=None, use_gzip=True):
     ret = FakeResponse()
@@ -301,11 +302,9 @@ def get_random(limit=10):
         }
         resp = api_req('query', params)
         for page_id, info in resp.results['query']['pages'].iteritems():
-            perms = Permissions(info.get('protection'))
             ret.append(PageIdentifier(title=info['title'],
                                        page_id=info['pageid'],
-                                       ns=info['ns'],
-                                       perms=perms))
+                                       ns=info['ns']))
     return ret
 
 
@@ -345,15 +344,13 @@ def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, namespaces=No
                         title = cm['title'].replace(' talk:', '')
                     namespace = namespace - 1
 
-            perms = Permissions(cm.get('protection'))
 
             if namespaces and namespace not in namespaces:
                 continue
             
             ret.append(PageIdentifier(title=title,
                                       page_id=page_id,
-                                      ns=namespace,
-                                      perms=perms))
+                                      ns=namespace))
         try:
             cont_str = resp.results['query-continue']['categorymembers']['gcmcontinue']
         except:
@@ -394,7 +391,7 @@ def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=PER_CA
     cont_str = ""
     params = {'generator':  'embeddedin',
               'prop':       'info',
-              'inprop':     'title|pageid|ns|subjectid|protection'}
+              'inprop':     'title|pageid|ns|subjectid'}
     if page_title and page_id:
         raise ValueError('Expected one of page_title or page_id, not both.')
     elif page_title:
@@ -438,11 +435,9 @@ def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=PER_CA
             else:
                 title = pi['title']
                 page_id = pi['pageid']
-            perms = Permissions(pi.get('protection', {}))
             ret.append(PageIdentifier(title=title,
                                       page_id=page_id,
-                                      ns=ns,
-                                      perms=perms,))
+                                      ns=ns))
         try:
             cont_str = resp.results['query-continue']['embeddedin']['geicontinue']
         except:
