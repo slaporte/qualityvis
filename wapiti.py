@@ -7,8 +7,14 @@ import requests
 import json
 from sys import maxint
 
-from collections import namedtuple
+from collections import namedtuple, deque
 from functools import partial
+
+import urllib2
+import socket
+from StringIO import StringIO
+import gzip
+
 
 IS_BOT = False
 
@@ -24,12 +30,40 @@ DEFAULT_TIMEOUT  = 15
 DEFAULT_HEADERS = { 'User-Agent': 'Loupe/0.0.0 Mahmoud Hashemi makuro@gmail.com' }
 DEFAULT_MAX_COUNT = maxint
 
+socket.setdefaulttimeout(DEFAULT_TIMEOUT) # TODO: better timeouts for fake requests
+
 
 class WikiException(Exception):
     pass
 PageIdentifier = namedtuple("PageIdentifier", "page_id, ns, title, perms")
 Page = namedtuple("Page", "title, req_title, namespace, page_id, rev_id, rev_text, is_parsed, fetch_date, fetch_duration")
 RevisionInfo = namedtuple('RevisionInfo', 'page_title, page_id, namespace, rev_id, rev_parent_id, user_text, user_id, length, time, sha1, comment, tags')
+
+# From http://en.wikipedia.org/wiki/Wikipedia:Namespace
+NAMESPACES = {
+    'Main': 0,
+    'Talk': 1,
+    'User': 2,
+    'User talk': 3,
+    'Wikipedia': 4,
+    'Wikipedia talk': 5,
+    'File': 6,
+    'File talk': 7,
+    'MediaWiki': 8,
+    'MediaWiki talk': 9,
+    'Template': 10,
+    'Template talk': 11,
+    'Help': 12,
+    'Help talk': 13,
+    'Category': 14,
+    'Category talk': 15,
+    'Portal': 100,
+    'Portal talk': 101,
+    'Book': 108,
+    'Book talk': 109,
+    'Special': -1,
+    'Media': -2
+    }
 
 
 NEW = 2
@@ -41,8 +75,8 @@ PROTECTION_ACTIONS = ['create', 'edit', 'move', 'upload']
 
 class Permissions(object):
     """
-    For more info on protection,
-    see https://en.wikipedia.org/wiki/Wikipedia:Protection_policy
+    For more info on protection, see:
+       https://en.wikipedia.org/wiki/Wikipedia:Protection_policy
     """
     levels = {
         'new': NEW,
@@ -94,16 +128,9 @@ class Permissions(object):
 def parse_timestamp(timestamp):
     return datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%SZ')
 
-import urllib2
-import socket
-socket.setdefaulttimeout(DEFAULT_TIMEOUT)
-from StringIO import StringIO
-import gzip
-
 
 class FakeResponse(object):
     pass
-
 
 def fake_requests(url, params=None, headers=None, use_gzip=True):
     ret = FakeResponse()
@@ -262,36 +289,6 @@ def api_req_old(action, params=None, raise_exc=True, **kwargs):
     return resp
 
 
-def get_category_old(cat_name, count=PER_CALL_LIMIT, cont_str=""):
-    ret = []
-    if not cat_name.startswith('Category:'):
-        cat_name = 'Category:' + cat_name
-    while len(ret) < count and cont_str is not None:
-        cur_count = min(count - len(ret), PER_CALL_LIMIT)
-        params = {'list':       'categorymembers',
-                  'cmtitle':    cat_name,
-                  'prop':       'info',
-                  'cmlimit':    cur_count,
-                  'cmcontinue': cont_str}
-        resp = api_req('query', params)
-        try:
-            qres = resp.results['query']
-        except:
-            print resp.error  # log
-            raise
-        ret.extend([PageIdentifier(page_id=cm['pageid'],
-                                   ns=cm['ns'],
-                                   title=cm['title'])
-                     for cm in qres['categorymembers']
-                     if cm.get('pageid')])
-        try:
-            cont_str = resp.results['query-continue']['categorymembers']['cmcontinue']
-        except:
-            cont_str = None
-
-    return ret
-
-
 def get_random(limit=10):
     ret = []
     while len(ret) < limit:
@@ -304,7 +301,7 @@ def get_random(limit=10):
         }
         resp = api_req('query', params)
         for page_id, info in resp.results['query']['pages'].iteritems():
-            perms = Permissions(info.get('protection', {}))
+            perms = Permissions(info.get('protection'))
             ret.append(PageIdentifier(title=info['title'],
                                        page_id=info['pageid'],
                                        ns=info['ns'],
@@ -312,7 +309,7 @@ def get_random(limit=10):
     return ret
 
 
-def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, cont_str=""):
+def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, namespaces=None, cont_str=""):
     ret = []
     if not cat_name.startswith('Category:'):
         cat_name = 'Category:' + cat_name
@@ -328,23 +325,31 @@ def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, cont_str=""):
         try:
             qres = resp.results['query']
         except:
-            print resp.error  # log
-            raise
+            break #hmmm
+
         for k, cm in qres['pages'].iteritems():
             if not cm.get('pageid'):
                 continue
             namespace = cm['ns']
-            if namespace != 0 and to_zero_ns:  # non-Main/zero namespace
+            title = cm['title']
+            page_id = cm['pageid']
+            if to_zero_ns:  # non-Main/zero namespace
                 try:
-                    _, _, title = cm['title'].partition(':')
                     page_id = cm['subjectid']
-                    namespace = 0
                 except KeyError as e:
-                    continue  # TODO: log
-            else:
-                title = cm['title']
-                page_id = cm['pageid']
-            perms = Permissions(cm.get('protection', {}))
+                    pass # TODO: log
+                else:
+                    if namespace == NAMESPACES['Talk']:
+                        _, _, title = cm['title'].partition(':')
+                    else:
+                        title = cm['title'].replace(' talk:', '')
+                    namespace = namespace - 1
+
+            perms = Permissions(cm.get('protection'))
+
+            if namespaces and namespace not in namespaces:
+                continue
+            
             ret.append(PageIdentifier(title=title,
                                       page_id=page_id,
                                       ns=namespace,
@@ -355,6 +360,33 @@ def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, cont_str=""):
             cont_str = None
     return ret
 
+
+def get_category_recursive(cat_name, count=DEFAULT_MAX_COUNT, depth_first=True, *a, **kw):
+    ret = []
+    ret_set = set()
+    cats = deque([cat_name])
+    seen_cats = set(cats)
+    while len(ret) < count and len(cats) > 0:
+        if depth_first:
+            cur_cat = cats.popleft()
+        else:
+            cur_cat = cats.pop()
+
+        cur_res = get_category(cur_cat, count, *a, **kw)
+
+        for r in cur_res:
+            if r.ns == NAMESPACES['Category']: #Category namespace
+                if r.title not in seen_cats:
+                    cats.append(r.title)
+                    seen_cats.add(r.title)
+            else:
+                if r.title not in ret_set:
+                    ret.append(r)
+                    ret_set.add(r.title)
+            if len(ret) >= count:
+                break
+            
+    return ret
 
 # TODO: default 'limit' to infinity/all
 def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=PER_CALL_LIMIT, to_zero_ns=True):
@@ -390,7 +422,7 @@ def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=PER_CA
         try:
             qres = resp.results['query']
         except:
-            print resp.error  # log
+            #print resp.error  # log
             raise
         for k, pi in qres['pages'].iteritems():
             if not pi.get('pageid'):
@@ -606,7 +638,7 @@ def get_revision_infos(page_title=None, page_id=None, limit=PER_CALL_LIMIT, cont
             if plist and not plist[0].get('missing'):
                 res_count += len(plist[0]['revisions'])
         except:
-            print resp.error  # log
+            #print resp.error  # log
             raise
         try:
             cont_str = resp.results['query-continue']['revisions']['rvcontinue']
