@@ -18,14 +18,13 @@ DEFAULT_PER_CALL = 1  # TODO: make a configurable dictionary of chunk sizes
 DEFAULT_TIMEOUT = 30
 ALL = 20000
 
-from inputs import DEFAULT_INPUTS, DOM, Revisions, Assessment
+from inputs import DEFAULT_INPUTS, DOM, Revisions
 from dashboard import LoupeDashboard
 
 DEFAULT_LIMITS = {  # Backlinks: 100,
             # FeedbackV4: 100,
           DOM: 40,
-          Revisions: 20,
-          Assessment: 20}
+          Revisions: 20}
 
 
 def get_filename(prefix=''):
@@ -210,6 +209,10 @@ def parse_args():
                       help="concurrency factor to use when querying the"
                       "Wikipedia API (simultaneous requests)")
 
+    parser.add_option("-R", "--recursive", dest="recursive",
+                      action="store_true", default=False,
+                      help="search category recursively")
+
     parser.add_option("-g", "--grouping", dest="grouping",
                       type="int", default=DEFAULT_PER_CALL,
                       help="how many sub-responses to request per API call")
@@ -237,6 +240,10 @@ def main():
         print 'Fetching ', opts.limit, ' random articles...'
         page_ds = wapiti.get_random(opts.limit)
         filename = get_filename('random')
+    elif kwargs.get('recursive'):
+        print 'Fetching members of category', opts.category, '...'
+        page_ds = wapiti.get_category_recursive(opts.category, count=opts.limit, to_zero_ns=True)
+        filename = get_filename(opts.category[:15])
     else:
         print 'Fetching members of category', opts.category, '...'
         page_ds = wapiti.get_category(opts.category, count=opts.limit, to_zero_ns=True)

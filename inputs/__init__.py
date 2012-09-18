@@ -10,10 +10,10 @@ from google import GoogleSearch
 from wikitrust import Wikitrust
 from grokse import PageViews
 from revisions import Revisions
-from assessment import Assessment
 from langlinks import LangLinks
 from interwikilinks import InterWikiLinks
 from watchers import Watchers
 from article_history import ArticleHistory
+from protection import Protection
 
-DEFAULT_INPUTS = [Backlinks, LangLinks, InterWikiLinks, FeedbackV4, FeedbackV5, DOM, GoogleNews, GoogleSearch, PageViews, Revisions, Assessment, Watchers, ArticleHistory]
+DEFAULT_INPUTS = [Backlinks, LangLinks, InterWikiLinks, FeedbackV4, FeedbackV5, DOM, GoogleNews, GoogleSearch, PageViews, Revisions, Watchers, Protection, ArticleHistory]
