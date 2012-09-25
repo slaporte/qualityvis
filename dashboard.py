@@ -5,6 +5,7 @@ from bottle import static_file
 from collections import defaultdict
 import sys
 import socket
+import wapiti
 
 import psutil
 import os
@@ -35,7 +36,6 @@ def find_port(host=DEFAULT_HOST, start_port=DEFAULT_PORT, end_port=None):
             return p
     return None
 
-# TODO: add ortellius load to meta
 
 class LoupeDashboard(Bottle):
 
@@ -49,6 +49,7 @@ class LoupeDashboard(Bottle):
         self.fetch_failures = louper.fetch_failures
         
         self.tpool = None
+        self.toolserver_uptime = self.get_toolserver_uptime()
         self.start_time = kwargs.get('start_time') or time.time()
         self.start_cmd = kwargs.get('start_cmd') or ' '.join(sys.argv)
         self.host_machine = kwargs.get('hostname') or socket.gethostname()
@@ -123,6 +124,7 @@ class LoupeDashboard(Bottle):
         ret['input_classes'] = [i.__name__ for i in self.inputs]
         ret['in_progress'] = [o.get_status() for o in self.loupe_pool]
         ret['complete'] = [o.get('status') for o in self.results.values()]
+        ret['toolserver'] = self.toolserver_uptime
         ret['meta'] = self.get_meta_dict()
         ret['failed_stats'] = self.failed_stats
         ret['fetch_failures'] = self.fetch_failures
@@ -134,10 +136,22 @@ class LoupeDashboard(Bottle):
         return ret
 
     def get_report(self):
-        return template('dashboard', self.render_dashboard())
-    
-    def render_dashboard(self):
-        return self.get_dict()
+        return template('dashboard', self.render_dashboard(final=True))
+
+    def get_toolserver_uptime(self):
+        try:
+            res = wapiti.get_json('http://ortelius.toolserver.org:8089/uptime')
+        except Exception as e:
+            print 'Error getting toolserver stats:', e
+        return res
+
+    def render_dashboard(self, final=False):
+        ret = self.get_dict()
+        if final:
+            ret['toolserver_final'] = self.get_toolserver_uptime() 
+        else:
+            ret['toolserver_final'] = False
+        return ret
 
     def serve_static(self, filepath):
         from os.path import dirname
