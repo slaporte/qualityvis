@@ -53,6 +53,7 @@ class LoupeDashboard(Bottle):
         self.start_time = kwargs.get('start_time') or time.time()
         self.start_cmd = kwargs.get('start_cmd') or ' '.join(sys.argv)
         self.host_machine = kwargs.get('hostname') or socket.gethostname()
+        self.send_toolserver_log('start')
         self.route('/', callback=self.render_dashboard, template='dashboard')
         self.route('/summary', callback=self.get_summary_dict, template='summary')
         self.route('/all_results', callback=self.get_all_results)
@@ -145,10 +146,18 @@ class LoupeDashboard(Bottle):
             print 'Error getting toolserver stats:', e
         return res
 
+    def send_toolserver_log(self, action):
+        params = {'action': action, 'hostname': self.host_machine, 'params': self.start_cmd}
+        try:
+            wapiti.get_url('http://ortelius.toolserver.org:8089/writelog/', params=params)
+        except Exception as e:
+            print 'Error logging:', e
+
     def render_dashboard(self, final=False):
         ret = self.get_dict()
         if final:
-            ret['toolserver_final'] = self.get_toolserver_uptime() 
+            ret['toolserver_final'] = self.get_toolserver_uptime()
+            self.send_toolserver_log('complete')
         else:
             ret['toolserver_final'] = False
         return ret

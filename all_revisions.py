@@ -6,11 +6,13 @@ import oursql
 from bottle_compressor import CompressorPlugin
 import logging
 import json
+from functools import partial
+
 
 compressor_plugin = CompressorPlugin(compress_level=3)
 bottle.install(compressor_plugin)
 
-from functools import partial
+
 #from ujson import dumps
 from bottle import json_dumps as dumps
 better_dumps = partial(dumps, ensure_ascii=False, separators=(',', ':'))
@@ -101,9 +103,9 @@ def write_log():
     params = request.query.params
     if action and hostname and params:
         LOG.log(action, hostname, params)
-        return 'action: ', action, ' hostname: ', hostname, ' params: ', params
+        return {'log': LOG.read(1), 'write': 'success'}
     else:
-        return 'failed'
+        return {'write': 'failure'}
 
 
 @route('/readlog')
@@ -115,7 +117,7 @@ def read_log(lines=10):
             lines = int(lines)
         except ValueError:
             lines = 10
-    return {'readlog': LOG.read(lines)}
+    return {'log': LOG.read(lines)}
 
 
 @route('/revisions/<title:path>')
