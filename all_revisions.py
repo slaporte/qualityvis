@@ -4,6 +4,8 @@ import time
 import os
 import oursql
 from bottle_compressor import CompressorPlugin
+import logging
+import json
 
 compressor_plugin = CompressorPlugin(compress_level=3)
 bottle.install(compressor_plugin)
@@ -20,6 +22,25 @@ bottle.default_app().install(JSONPlugin(better_dumps))
 ALL_PROPS = ["rev_sha1", "rev_len", "rev_text_id", "rev_timestamp", "rev_minor_edit", "rev_user_text", "rev_comment", "rev_parent_id", "rev_deleted", "rev_page", "rev_user", "rev_id"]
 
 DESIRED_PROPS = ["rev_sha1", "rev_len", "rev_timestamp", "rev_minor_edit", "rev_user_text", "rev_comment", "rev_deleted", "rev_user", "rev_id"]
+
+
+class AccessLogger(object):
+    def __init__(self, logfile):
+        self.logfile = logfile
+        self.logger = logging.getLogger('AccessLogger')
+        self.logger.setLevel(logging.INFO)
+        write_handler = logging.FileHandler(logfile)
+        self.logger.addHandler(write_handler)
+
+    def log(self, action, hostname, params):
+        self.logger.info(json.dumps({'time': time.asctime(), 'action': action, 'hostname': hostname, 'params': params}))
+
+    def read(self, no):
+        history = open(self.logfile, 'r')
+        lines = history.readlines()
+        return [json.loads(line) for line in lines[-no:]][::-1]
+
+LOG = AccessLogger('access.log')
 
 
 class ArticleHistory(object):
@@ -71,6 +92,30 @@ class WL(object):
                 ''', (title, namespace))
             self.wers = cursor.fetchall()
             self.dur = time.time() - s_time
+
+
+@route('/writelog/')
+def write_log():
+    action = request.query.action
+    hostname = request.query.hostname
+    params = request.query.params
+    if action and hostname and params:
+        LOG.log(action, hostname, params)
+        return 'action: ', action, ' hostname: ', hostname, ' params: ', params
+    else:
+        return 'failed'
+
+
+@route('/readlog')
+@route('/readlog/')
+@route('/readlog/<lines:path>')
+def read_log(lines=10):
+    if type(lines) is not int:
+        try:
+            lines = int(lines)
+        except ValueError:
+            lines = 10
+    return {'readlog': LOG.read(lines)}
 
 
 @route('/revisions/<title:path>')
