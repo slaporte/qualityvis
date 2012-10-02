@@ -49,9 +49,10 @@ class FancyInputPool(gevent.pool.Pool):
 
 
 class ArticleLoupe(Greenlet):
-    def __init__(self, title, page_id, input_classes=None, input_pool=None, *args, **kwargs):
+    def __init__(self, title, page_id, page_ns, input_classes=None, input_pool=None, *args, **kwargs):
         self.title = title
         self.page_id = page_id
+        self.page_ns = page_ns
         if input_classes is None:
             input_classes = DEFAULT_INPUTS
         self.inputs = [i(title=self.title,
@@ -154,7 +155,7 @@ class Louper(object):
         print 'Creating Loupes for', len(self.page_ds), 'articles...'
         create_i = 0
         for pd in self.page_ds:
-            al = ArticleLoupe(pd.title, pd.page_id, input_pool=self.input_pool, input_classes=self.input_classes)
+            al = ArticleLoupe(pd.title, pd.page_id, pd.ns, input_pool=self.input_pool, input_classes=self.input_classes)
             create_i += 1
             al.create_i = create_i
             al.link(self.on_loupe_complete)
@@ -181,6 +182,7 @@ class Louper(object):
         output_dict = loupe.results
         output_dict['title'] = loupe.title
         output_dict['id'] = loupe.page_id
+        output_dict['ns'] = loupe.page_ns
         output_dict['times'] = loupe.times
         
         self.output_file.write(json.dumps(output_dict, default=str))

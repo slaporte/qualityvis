@@ -59,10 +59,17 @@ def pq_contains(elem, search):
     return xpath_search
 
 
+def per_word(feature, f):
+        words = float(len(f('p').text().split()))
+        if words > 0:
+            return len(f(feature)) / words
+        else:
+            return 0
+
 
 class DOM(Input):
     prefix = 'd'
-    
+
     def api_fetch(self):
         """
         Deprecated fetch() that gets parsed content from the API.
@@ -88,6 +95,13 @@ class DOM(Input):
         # General page/page structure stats
         'word_count': lambda f: len(f('p').text().split()),
         'p': lambda f: dist_stats(paragraph_counts(f)),
+
+        # Key stats relative to word count
+        'img_per_w': lambda f:  per_word('.image', f),
+        'cite_per_w': lambda f: per_word('li[id^="cite_note"]', f),
+        'int_link_per_w': lambda f: per_word('p a[href^="/wiki/"]', f),
+        'red_link_per_w': lambda f: per_word('.new', f),
+        'ext_link_per_w': lambda f: per_word('.external', f),
 
         # Section-based page structure stats
         'h2': lambda f: section_stats(f('h2')),
@@ -153,6 +167,7 @@ class DOM(Input):
         'unicode_count': lambda f: len(f('.unicode, .Unicode')),
 
         # Template inspection, mostly fault detection
+        'tmpl_general': lambda f: len(f('.ambox')),
         'tmpl_delete': lambda f: len(f('.ambox-delete')),
         'tmpl_autobiography': lambda f: len(f('.ambox-autobiography')),
         'tmpl_advert': lambda f: len(f('.ambox-Advert')),
