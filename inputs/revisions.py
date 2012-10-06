@@ -1,7 +1,7 @@
 from base import Input
 from wapiti import get_json
 from stats import dist_stats
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from math import ceil
 from collections import OrderedDict, defaultdict
 
@@ -9,9 +9,16 @@ REVERT_WINDOW = 4
 SLEUTHING_FACTOR = 10
 RETURNING_ED_THRESHOLD = 5
 
-
 def parse_date_string(stamp):
     return datetime.strptime(stamp, '%Y%m%d%H%M%S')
+
+
+def get_time_diffs(revisions):
+    tds_seconds = []
+    for x, y in zip(revisions, revisions[1:]):
+        td = y['rev_parsed_date'] - x['rev_parsed_date']
+        tds_seconds.append(td.total_seconds())
+    return tds_seconds
 
 
 def set_info(revisions):
@@ -21,26 +28,27 @@ def set_info(revisions):
     abs_byte_sum = sum([abs(x['rev_diff']) for x in revisions])
 
     return {
-        'count':    len(revisions),
-        'minor_count':  int(sum([rev['rev_minor_edit'] for rev in revisions])),
+        'count': len(revisions),
+        'minor_count': int(sum([rev['rev_minor_edit'] for rev in revisions])),
         'byte_count': sum([rev['rev_diff'] for rev in revisions]),
-        'abs_byte_dist': dist_stats([abs(rev['rev_diff']) for rev in revisions]) if revisions else {},
-        'IP_edit_count':  len([rev for rev in revisions if rev['rev_user'] == 0]),
-        'revert_estimate':  len([rev for rev in revisions if 'revert' in rev['rev_comment'].lower()]),
+        'by_day': dist_stats(edits_by_day(revisions)),
+        'ip_edit_count':  len([rev for rev in revisions if rev['rev_user'] == 0]),
+        'est_revert_count':  len([rev for rev in revisions if 'revert' in rev['rev_comment'].lower()]),
         'blank_count': len([x for x in revisions if x['rev_len'] == 0]),
         'deleted_count': len([x for x in revisions if x['rev_deleted'] > 0]),
-        'ed_returning': len([(a, c) for (a, c) in editor_counts.iteritems() if c > RETURNING_ED_THRESHOLD]),
+        'abs_byte': dist_stats([abs(rev['rev_diff']) for rev in revisions]) if revisions else {},
+        'ed_returning': len([c for c in editor_counts.itervalues() if c > RETURNING_ED_THRESHOLD]),
         'ed_unique': len(editor_counts),
         'ed_top_20': get_top_percent_editors(.20, sorted_editor_counts, len(revisions)),
         'ed_top_5': get_top_percent_editors(.05, sorted_editor_counts, len(revisions)),
         'ed_top_20_bytes': get_top_percent_editors(.20, sorted_editor_bytes, abs_byte_sum),
-        'ed_top_5_bytes': get_top_percent_editors(.05, sorted_editor_bytes, abs_byte_sum),
+        'ed_top_5_bytes': get_top_percent_editors(.05, sorted_editor_bytes, abs_byte_sum)
         }
 
 
 def newer_than(num_days, rev_list):
     ret = []
-    bound = datetime.now() - timedelta(days=num_days)
+    bound = datetime.utcnow() - timedelta(days=num_days)
     for i in range(0, len(rev_list)):
         if rev_list[i]['rev_parsed_date'] < bound:
             continue
@@ -74,27 +82,42 @@ def get_top_percent_editors(percent, sorted_editor_counts, rev_len):
         return 0.0
 
 
+def edits_by_day(revisions):
+    ed_dict = defaultdict(list)
+    for rev in revisions:
+        ed_dict[rev['rev_parsed_date'].utctimetuple()[:3]].append(rev)
+    return [len(eds) for (dtup, eds) in ed_dict.iteritems()]
+
+
 def all_revisions(revisions):
+    # TODO: stats by editor (top %, 5+ edits), by date (last 30 days), length stats
     if revisions:
+        first_edit_age = datetime.utcnow() - revisions[0]['rev_parsed_date']
+        latest_age = datetime.utcnow() - revisions[-1]['rev_parsed_date']
         ret = {
-        'all': set_info(revisions),
-        'last_30_days': set_info(newer_than(30, revisions)),
-        'last_2_days': set_info(newer_than(2, revisions)),
-        'most_recent_edit_age': str(datetime.now() - revisions[-1]['rev_parsed_date']),
-        'first_edit_date': str(revisions[0]['rev_parsed_date']),
-        'first_edit_age': str(datetime.now() - revisions[0]['rev_parsed_date']),
-        'most_recent_edit_date': str(revisions[-1]['rev_parsed_date'])
-        # TODO: stats by editor (top %, 5+ edits), by date (last 30 days), length stats
+            'all': set_info(revisions),
+            '2_days': set_info(newer_than(2, revisions)),
+            '30_days': set_info(newer_than(30, revisions)),
+            '90_days': set_info(newer_than(90, revisions)),
+            '365_days': set_info(newer_than(365, revisions)),
+            'latest_date': str(revisions[-1]['rev_parsed_date'].isoformat()),
+            'latest_age': latest_age.total_seconds(),
+            'first_date': revisions[0]['rev_parsed_date'].isoformat(),
+            'first_age': first_edit_age.total_seconds(),
+            'interval': dist_stats(get_time_diffs(revisions))
         }
     else:
         ret = {
-        'all': None,
-        'last_30_days': None,
-        'last_2_days': None,
-        'most_recent_edit_age': None,
-        'first_edit_date': None,
-        'first_edit_age': None,
-        'most_recent_edit_date': None
+            'all': '',
+            '2_days': '',
+            '30_days': '',
+            '90_days': '',
+            '365_days': '',
+            'latest_date': '',
+            'latest_age': '',
+            'first_date': '',
+            'first_age': '',
+            'interval': '',
         }
     return ret
 
@@ -105,7 +128,6 @@ def preprocess_revs(revs):
         rev['rev_parsed_date'] = parse_date_string(rev['rev_timestamp'])
         rev['rev_diff'] = rev['rev_len'] - prev_len
         prev_len = rev['rev_len']
-
     return revs
 
 
@@ -134,6 +156,8 @@ def partition_reverts(revs):
 
 
 class Revisions(Input):
+    prefix = 'rv'
+
     def fetch(self):
         ret = {}
         revs = get_json('http://ortelius.toolserver.org:8089/all/?title=' + self.page_title.replace(' ', '_'))
@@ -148,10 +172,12 @@ class Revisions(Input):
         pass
 
     stats = {
-        'revs_without_reverted': lambda f: all_revisions(f['article_without_reverted']),
-        'revs_reverted': lambda f: all_revisions(f['article_reverted']),
-        'revs': lambda f: all_revisions(f['article']),
-        'talks_without_reverted': lambda f: all_revisions(f['talk_without_reverted']),
-        'talks_reverted': lambda f: all_revisions(f['talk_reverted']),
-        'talks': lambda f: all_revisions(f['talk']),
+        # subject page
+        'wo_undid': lambda f: all_revisions(f['article_without_reverted']),
+        'undid': lambda f: all_revisions(f['article_reverted']),
+        'all': lambda f: all_revisions(f['article']),
+        # talk page stuff follows
+        't_wo_undid': lambda f: all_revisions(f['talk_without_reverted']),
+        't_undid': lambda f: all_revisions(f['talk_reverted']),
+        't_all': lambda f: all_revisions(f['talk']),
     }

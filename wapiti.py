@@ -5,11 +5,16 @@ import re
 import itertools
 import requests
 import json
+from sys import maxint
 
-from collections import namedtuple
+from collections import namedtuple, deque
 from functools import partial
 
-from progress import ProgressMeter
+import urllib2
+import socket
+from StringIO import StringIO
+import gzip
+
 
 IS_BOT = False
 
@@ -23,23 +28,110 @@ DEFAULT_CONC     = 100
 DEFAULT_PER_CALL = 4
 DEFAULT_TIMEOUT  = 15
 DEFAULT_HEADERS = { 'User-Agent': 'Loupe/0.0.0 Mahmoud Hashemi makuro@gmail.com' }
+DEFAULT_MAX_COUNT = maxint
 
-class WikiException(Exception): pass
-PageIdentifier = namedtuple("PageIdentifier", "page_id, ns, title")
+socket.setdefaulttimeout(DEFAULT_TIMEOUT) # TODO: better timeouts for fake requests
+
+
+class WikiException(Exception):
+    pass
+PageIdentifier = namedtuple("PageIdentifier", "page_id, ns, title, perms")
 Page = namedtuple("Page", "title, req_title, namespace, page_id, rev_id, rev_text, is_parsed, fetch_date, fetch_duration")
 RevisionInfo = namedtuple('RevisionInfo', 'page_title, page_id, namespace, rev_id, rev_parent_id, user_text, user_id, length, time, sha1, comment, tags')
+
+# From http://en.wikipedia.org/wiki/Wikipedia:Namespace
+NAMESPACES = {
+    'Main': 0,
+    'Talk': 1,
+    'User': 2,
+    'User talk': 3,
+    'Wikipedia': 4,
+    'Wikipedia talk': 5,
+    'File': 6,
+    'File talk': 7,
+    'MediaWiki': 8,
+    'MediaWiki talk': 9,
+    'Template': 10,
+    'Template talk': 11,
+    'Help': 12,
+    'Help talk': 13,
+    'Category': 14,
+    'Category talk': 15,
+    'Portal': 100,
+    'Portal talk': 101,
+    'Book': 108,
+    'Book talk': 109,
+    'Special': -1,
+    'Media': -2
+    }
+
+
+NEW = 2
+AUTOCONFIRMED = 1
+SYSOP = 0
+Protection = namedtuple('Protection', 'level, expiry')
+PROTECTION_ACTIONS = ['create', 'edit', 'move', 'upload']
+
+
+class Permissions(object):
+    """
+    For more info on protection, see:
+       https://en.wikipedia.org/wiki/Wikipedia:Protection_policy
+    """
+    levels = {
+        'new': NEW,
+        'autoconfirmed': AUTOCONFIRMED,
+        'sysop': SYSOP,
+    }
+
+    def __init__(self, protections=None):
+        protections = protections or {}
+        self.permissions = {}
+        for p in protections:
+            if p['expiry'] != 'infinity':
+                expiry = parse_timestamp(p['expiry'])
+            else:
+                expiry = 'infinity'
+            level = self.levels[p['level']]
+            self.permissions[p['type']] = Protection(level, expiry)
+
+    @property
+    def has_protection(self):
+        return any([x.level != NEW for x in self.permissions.values()])
+
+    @property
+    def has_indef(self):
+        return any([x.expiry == 'infinity' for x in self.permissions.values()])
+
+    @property
+    def is_full_prot(self):
+        try:
+            if self.permissions['edit'].level == SYSOP and \
+                self.permissions['move'].level == SYSOP:
+                return True
+            else:
+                return False
+        except (KeyError, AttributeError):
+            return False
+
+    @property
+    def is_semi_prot(self):
+        try:
+            if self.permissions['edit'].level == AUTOCONFIRMED:
+                return True
+            else:
+                return False
+        except (KeyError, AttributeError):
+            return False
+
 
 def parse_timestamp(timestamp):
     return datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%SZ')
 
-import urllib
-import urllib2
-import socket
-socket.setdefaulttimeout(DEFAULT_TIMEOUT)
-from StringIO import StringIO
-import gzip
 
-class FakeResponse(object): pass
+class FakeResponse(object):
+    pass
+
 def fake_requests(url, params=None, headers=None, use_gzip=True):
     ret = FakeResponse()
     full_url = url
@@ -57,7 +149,6 @@ def fake_requests(url, params=None, headers=None, use_gzip=True):
 
     req = requests.Request(url, params=params, headers=headers, method='GET', prefetch=False)
     full_url = req.full_url  # oh lawd, usin requests to create the url for now
-        
     req = urllib2.Request(full_url, headers=headers)
     resp = urllib2.urlopen(req)
     resp_text = resp.read()
@@ -67,11 +158,10 @@ def fake_requests(url, params=None, headers=None, use_gzip=True):
         buf = StringIO(comp_resp_text)
         f = gzip.GzipFile(fileobj=buf)
         resp_text = f.read()
-    
+
     ret.text = resp_text
     ret.status_code = resp.getcode()
     ret.headers = resp.headers
-    
     return ret
 
 
@@ -86,8 +176,8 @@ def get_url(url, params=None, raise_exc=True):
             resp.error = e
     return resp
 
+
 def get_json(*args, **kwargs):
-    import json
     resp = get_url(*args, **kwargs)
     return json.loads(resp.text)
 
@@ -199,37 +289,27 @@ def api_req_old(action, params=None, raise_exc=True, **kwargs):
     return resp
 
 
-def get_category_old(cat_name, count=PER_CALL_LIMIT, cont_str=""):
+def get_random(limit=10):
     ret = []
-    if not cat_name.startswith('Category:'):
-        cat_name = 'Category:' + cat_name
-    while len(ret) < count and cont_str is not None:
-        cur_count = min(count - len(ret), PER_CALL_LIMIT)
-        params = {'list':       'categorymembers',
-                  'cmtitle':    cat_name,
-                  'prop':       'info',
-                  'cmlimit':    cur_count,
-                  'cmcontinue': cont_str}
+    while len(ret) < limit:
+        params = {
+            'generator': 'random',
+            'grnnamespace': 0,
+            'grnlimit': 10,
+            'prop': 'info',
+            'inprop': 'subjectid|protection',
+        }
         resp = api_req('query', params)
-        try:
-            qres = resp.results['query']
-        except:
-            print resp.error  # log
-            raise
-        ret.extend([PageIdentifier(page_id=cm['pageid'],
-                                   ns     =cm['ns'],
-                                   title  =cm['title'])
-                     for cm in qres['categorymembers']
-                     if cm.get('pageid')])
-        try:
-            cont_str = resp.results['query-continue']['categorymembers']['cmcontinue']
-        except:
-            cont_str = None
-
+        for page_id, info in resp.results['query']['pages'].iteritems():
+            perms = Permissions(info.get('protection'))
+            ret.append(PageIdentifier(title=info['title'],
+                                       page_id=info['pageid'],
+                                       ns=info['ns'],
+                                       perms=perms))
     return ret
 
 
-def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, cont_str=""):
+def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, namespaces=None, cont_str=""):
     ret = []
     if not cat_name.startswith('Category:'):
         cat_name = 'Category:' + cat_name
@@ -238,40 +318,75 @@ def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, cont_str=""):
         params = {'generator': 'categorymembers',
                   'gcmtitle':   cat_name,
                   'prop':       'info',
-                  'inprop':     'title|pageid|ns|subjectid',
+                  'inprop':     'title|pageid|ns|subjectid|protection',
                   'gcmlimit':    cur_count,
                   'gcmcontinue': cont_str}
         resp = api_req('query', params)
         try:
             qres = resp.results['query']
         except:
-            print resp.error  # log
-            raise
+            break #hmmm
+
         for k, cm in qres['pages'].iteritems():
             if not cm.get('pageid'):
                 continue
             namespace = cm['ns']
-            if namespace != 0 and to_zero_ns:  # non-Main/zero namespace
+            title = cm['title']
+            page_id = cm['pageid']
+            if to_zero_ns:  # non-Main/zero namespace
                 try:
-                    _, _, title = cm['title'].partition(':')
                     page_id = cm['subjectid']
-                    namespace = 0
                 except KeyError as e:
-                    continue  # TODO: log
-            else:
-                title = cm['title']
-                page_id = cm['pageid']
+                    pass # TODO: log
+                else:
+                    if namespace == NAMESPACES['Talk']:
+                        _, _, title = cm['title'].partition(':')
+                    else:
+                        title = cm['title'].replace(' talk:', '')
+                    namespace = namespace - 1
 
+            perms = Permissions(cm.get('protection'))
+
+            if namespaces and namespace not in namespaces:
+                continue
+            
             ret.append(PageIdentifier(title=title,
                                       page_id=page_id,
-                                      ns=namespace))
+                                      ns=namespace,
+                                      perms=perms))
         try:
             cont_str = resp.results['query-continue']['categorymembers']['gcmcontinue']
         except:
             cont_str = None
-
     return ret
 
+
+def get_category_recursive(cat_name, count=DEFAULT_MAX_COUNT, depth_first=True, *a, **kw):
+    ret = []
+    ret_set = set()
+    cats = deque([cat_name])
+    seen_cats = set(cats)
+    while len(ret) < count and len(cats) > 0:
+        if depth_first:
+            cur_cat = cats.popleft()
+        else:
+            cur_cat = cats.pop()
+
+        cur_res = get_category(cur_cat, count, *a, **kw)
+
+        for r in cur_res:
+            if r.ns == NAMESPACES['Category']: #Category namespace
+                if r.title not in seen_cats:
+                    cats.append(r.title)
+                    seen_cats.add(r.title)
+            else:
+                if r.title not in ret_set:
+                    ret.append(r)
+                    ret_set.add(r.title)
+            if len(ret) >= count:
+                break
+            
+    return ret
 
 # TODO: default 'limit' to infinity/all
 def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=PER_CALL_LIMIT, to_zero_ns=True):
@@ -279,7 +394,7 @@ def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=PER_CA
     cont_str = ""
     params = {'generator':  'embeddedin',
               'prop':       'info',
-              'inprop':     'title|pageid|ns|subjectid'}
+              'inprop':     'title|pageid|ns|subjectid|protection'}
     if page_title and page_id:
         raise ValueError('Expected one of page_title or page_id, not both.')
     elif page_title:
@@ -299,7 +414,7 @@ def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=PER_CA
         params['geinamespace'] = namespaces_str
     while len(ret) < limit and cont_str is not None:
         cur_count = min(limit - len(ret), PER_CALL_LIMIT)
-        params['geilimit']    = cur_count
+        params['geilimit'] = cur_count
         if cont_str:
             params['geicontinue'] = cont_str
 
@@ -307,7 +422,7 @@ def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=PER_CA
         try:
             qres = resp.results['query']
         except:
-            print resp.error  # log
+            #print resp.error  # log
             raise
         for k, pi in qres['pages'].iteritems():
             if not pi.get('pageid'):
@@ -323,15 +438,15 @@ def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=PER_CA
             else:
                 title = pi['title']
                 page_id = pi['pageid']
-
-            ret.append(PageIdentifier(title = title,
-                                      page_id = page_id,
-                                      ns = ns))
+            perms = Permissions(pi.get('protection', {}))
+            ret.append(PageIdentifier(title=title,
+                                      page_id=page_id,
+                                      ns=ns,
+                                      perms=perms,))
         try:
             cont_str = resp.results['query-continue']['embeddedin']['geicontinue']
         except:
             cont_str = None
-
     return ret
 
 
@@ -385,15 +500,15 @@ def get_articles(page_ids=None, titles=None,
             if not page.get('pageid') or not page.get('title'):
                 continue
             title = page['title']
-            pa = Page( title = title,
-                       req_title = redirects.get(title, title),
-                       namespace = page['ns'],
-                       page_id = page['pageid'],
-                       rev_id = page['revisions'][0]['revid'],
-                       rev_text = page['revisions'][0]['*'],
-                       is_parsed = parsed,
-                       fetch_date = fetch_start_time,
-                       fetch_duration = fetch_end_time - fetch_start_time)
+            pa = Page( title=title,
+                       req_title=redirects.get(title, title),
+                       namespace=page['ns'],
+                       page_id=page['pageid'],
+                       rev_id=page['revisions'][0]['revid'],
+                       rev_text=page['revisions'][0]['*'],
+                       is_parsed=parsed,
+                       fetch_date=fetch_start_time,
+                       fetch_duration=fetch_end_time - fetch_start_time)
             ret.append(pa)
     return ret
 
@@ -403,17 +518,21 @@ def get_talk_page(title):
               'titles': 'Talk:' + title,
               'rvprop': 'content',
              }
-    return api_req('query', params).results['query']['pages'].values()[0]['revisions'][0]['*']
+    resp = api_req('query', params).results
+    try:
+        talk_page = resp['query']['pages'].values()[0]['revisions'][0]['*']
+    except KeyError as e:
+        talk_page = ''
+    return talk_page
 
 
-def get_backlinks(title, count=PER_CALL_LIMIT, cont_str='', **kwargs):
+def get_backlinks(title, count=PER_CALL_LIMIT, limit=DEFAULT_MAX_COUNT, cont_str='', **kwargs):
     ret = []
-    while len(ret) < count and cont_str is not None:
-        cur_count = min(count - len(ret), PER_CALL_LIMIT)
+    while len(ret) < limit and cont_str is not None:
         params = {'list': 'backlinks',
                   'bltitle': title,
                   'blnamespace': 0,
-                  'bllimit': cur_count
+                  'bllimit': PER_CALL_LIMIT,
                   }
         if cont_str:
             params['blcontinue'] = cont_str
@@ -427,16 +546,25 @@ def get_backlinks(title, count=PER_CALL_LIMIT, cont_str='', **kwargs):
     return ret
 
 
-def get_langlinks(title, **kwargs):
-    params = {'prop': 'langlinks',
-              'titles': title,
-              'lllimit': PER_CALL_LIMIT,  # TODO?
-              }
-    try:
-        query_results = api_req('query', params).results['query']['pages'].values()[0]['langlinks']
-    except KeyError:
-        query_results = []
-    ret = [link.get('lang') for link in query_results if link.get('lang')]
+def get_langlinks(title, limit=DEFAULT_MAX_COUNT, cont_str='', **kwargs):
+    ret = []
+    while len(ret) < limit and cont_str is not None:
+        params = {'prop': 'langlinks',
+                  'titles': title,
+                  'lllimit': PER_CALL_LIMIT,  # TODO?
+                  }
+        if cont_str:
+            params['llcontinue'] = cont_str
+        resp = api_req('query', params).results
+        if resp['query']['pages'].values()[0].get('langlinks') is None:
+            return []
+        langs = resp['query']['pages'].values()[0].get('langlinks')
+        for language in langs:
+            ret.append(language['lang'])
+        try:
+            cont_str = resp.results['query-continue']['langlinks']['llcontinue']
+        except:
+            cont_str = None
     return ret
 
 
@@ -447,6 +575,18 @@ def get_interwikilinks(title, **kwargs):
               }
     try:
         query_results = api_req('query', params).results['query']['pages'].values()[0]['iwlinks']
+    except KeyError:
+        query_results = []
+    return query_results
+
+
+def get_protection(title, **kwargs):
+    params = {'prop': 'info',
+              'titles': title,
+              'inprop': 'protection',
+              }
+    try:
+        query_results = api_req('query', params).results['query']['pages'].values()[0]['protection']
     except KeyError:
         query_results = []
     return query_results
@@ -498,7 +638,7 @@ def get_revision_infos(page_title=None, page_id=None, limit=PER_CALL_LIMIT, cont
             if plist and not plist[0].get('missing'):
                 res_count += len(plist[0]['revisions'])
         except:
-            print resp.error  # log
+            #print resp.error  # log
             raise
         try:
             cont_str = resp.results['query-continue']['revisions']['rvcontinue']
@@ -516,18 +656,18 @@ def get_revision_infos(page_title=None, page_id=None, limit=PER_CALL_LIMIT, cont
         namespace = page_dict['ns']
 
         for rev in page_dict.get('revisions', []):
-            rev_info = RevisionInfo(page_title= page_title,
-                                    page_id   = page_id,
-                                    namespace = namespace,
-                                    rev_id    = rev['revid'],
-                                    rev_parent_id = rev['parentid'],
-                                    user_text = rev.get('user', '!userhidden'),  # user info can be oversighted
-                                    user_id = rev.get('userid', -1),
-                                    time = parse_timestamp(rev['timestamp']),
-                                    length = rev['size'],
-                                    sha1 = rev['sha1'],
-                                    comment = rev.get('comment', ''),  # comments can also be oversighted
-                                    tags = rev['tags'])
+            rev_info = RevisionInfo(page_title=page_title,
+                                    page_id=page_id,
+                                    namespace=namespace,
+                                    rev_id=rev['revid'],
+                                    rev_parent_id=rev['parentid'],
+                                    user_text=rev.get('user', '!userhidden'),  # user info can be oversighted
+                                    user_id=rev.get('userid', -1),
+                                    time=parse_timestamp(rev['timestamp']),
+                                    length=rev['size'],
+                                    sha1=rev['sha1'],
+                                    comment=rev.get('comment', ''),  # comments can also be oversighted
+                                    tags=rev['tags'])
             ret.append(rev_info)
     return ret
 

@@ -64,14 +64,15 @@ class Input(Greenlet):
         ret = {}
         for k, func in self.stats.iteritems():
             try:
-                if fetch_results:
-                    res = func(fetch_results)
-                else:
-                    res = None
+                full_key = '{0}_{1}'.format(self.prefix, k)
+            except AttributeError:
+                full_key = k
+            try:
+                res = func(fetch_results)
             except Exception as e:
-                ret[k] = e
+                ret[full_key] = e
             else:
-                ret[k] = res
+                ret[full_key] = res
         return ret
 
     def __call__(self):

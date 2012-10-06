@@ -28,11 +28,11 @@ def tmpl_text_to_odict(text):
         k = k.strip()
         v = v.strip()
         if not k:
-            print 'blank key error', k
+            # blank key error
             #import pdb;pdb.set_trace()
             continue
         if k in ret:
-            print 'duplicate key error', k
+            # duplicate key error
             #import pdb;pdb.set_trace()
             continue
         ret[k] = v
@@ -96,14 +96,20 @@ def parse_date(date):
         return date
 
 
-def age_as_str(date):
+def age_secs(date):
     try:
-        return str(datetime.now() - date)
+        diff = datetime.utcnow() - date
+        try:
+            return diff.total_seconds()
+        except TypeError:
+            return 0
     except TypeError:
-        return None
+        return 0
 
 
 class ArticleHistory(Input):
+    prefix = 'ah'
+
     def fetch(self):
         return wapiti.get_talk_page(self.page_title)
 
@@ -119,18 +125,21 @@ class ArticleHistory(Input):
                   'dykdate': parse_date(tmpl_dict.get('dykdate')),
                   'maindate': parse_date(tmpl_dict.get('maindate'))
                   }
+            if actions:
+                ah['oldest_action_age'] = age_secs(actions[0].date)
+                ah['latest_action_age'] = age_secs(actions[-1].date)
             return super(ArticleHistory, self).process(ah)
         else:
             return super(ArticleHistory, self).process({'actions': []})
 
     stats = {
         'article_history': lambda f: len(f.get('actions')),
-        'oldest_action_age': lambda f: age_as_str(f.get('actions')[0].date),
-        'recent_action_age': lambda f: age_as_str(f.get('actions')[-1].date),
-        'mainpage_age': lambda f: age_as_str(f.get('maindate')),
-        'dyk_age': lambda f: age_as_str(f.get('dykdate')),
-        'itn_age': lambda f: age_as_str(f.get('itndate')),
-        'ah_topic': lambda f: f.get('topic', None),
-        'ah_current': lambda f: f.get('current', None),
-        'ah_actions': lambda f: [{'type': action.type, 'result': action.result, 'date': str(action.date)} for action in f.get('actions')],
+        'oldest_action_age': lambda f: f.get('oldest_action_age', 0),
+        'latest_action_age': lambda f: f.get('latest_action_age', 0),
+        'mainpage_age': lambda f: age_secs(f.get('maindate')),
+        'dyk_age': lambda f: age_secs(f.get('dykdate')),
+        'itn_age': lambda f: age_secs(f.get('itndate')),
+        'topic': lambda f: f.get('topic', ''),
+        'current': lambda f: f.get('current', ''),
+        'actions': lambda f: [{'type': action.type, 'result': action.result, 'date': str(action.date)} for action in f.get('actions')],
     }
