@@ -11,7 +11,18 @@
 <p><input id="autorefresh" name="autorefresh" type="checkbox" /> <label for="autorefresh">Auto-update</label></p>
 <div id="content">
 <h2>Summary</h2>
-<p class="infos">Run started on <span class="info">{{meta['host_machine']}}</span> at <span class="info">{{meta['start_time']}}</span> via <span class="info">{{meta['start_cmd']}}</span>.
+<p class="infos">Run started on <span class="info">{{meta['host_machine']}}</span> at <span class="info">{{meta['start_time']}}</span> via <span class="info">{{meta['start_cmd']}}</span>.</p>
+%if toolserver.get('load'):
+    <p>Toolserver host <span class="info">{{toolserver['hostname']}}</span></p>
+    <ul>
+        <li>Load: <span class="info">{{toolserver['load']}}</span></li>
+        <li>Uptime: <span class="info">{{toolserver['uptime']}}</span></li>
+        <li>Uname: <span class="info">{{toolserver['uname']}}</span></li>
+        %if toolserver_final:
+            <li>Load upon complete: <span class="info">{{toolserver_final['load']}}</span></li>
+        %end
+    </ul>
+%end
 %if summary['total_articles']:
     %completion = str(round(summary['complete_count'] / float(summary['total_articles']), 4) * 100) + '%'
     <p class="infos">Currently <span class="info">{{completion}}</span> complete.</p>
@@ -95,6 +106,8 @@
                 <td class="input-success">
                 %elif in_complete:
                 <td class="input-failure">
+                %elif in_attempts > 0:
+                <td class="input-retried">
                 %else:
                 <td class="input-incomplete">
                 %end
@@ -160,48 +173,53 @@
     </tbody>
 </table>
 %if total:
-<h2>Stat failures</h2>
 %total_errs = len(failed_stats)
-<p class="infos">We have <span class="info">{{total_errs}}</span> types of stat failures.</p>
-<table id="failure-table">
-    <thead>
-        <th>Input</th>
-        <th>Stat</th>
-        <th>Error</th>
-        <th>Total</th>
-        <th>Fail rate</th>
-        <th>Example</th>
-    </thead>
-    <tbody>
-        %for (failed_stat, f_titles) in failed_stats.iteritems():
-        <tr>
-            <td class='label'>{{failed_stat[0]}}</td>
-            <td class='label'>{{failed_stat[1]}}</td>
-            <td class='text'>{{failed_stat[2]}}</td>
-            <td>{{len(f_titles)}}</td>
-            <td>{{round(len(f_titles) / float(total), 2) * 100}}%</td>
-            <td><a href='https://en.wikipedia.org/wiki/{{f_titles[0].replace(' ', '_')}}'>{{f_titles[0]}}</a></td>
-        </tr>
-        %end
-    </tbody>
-</table>
+    %if total_errs > 0:
+    <h2>Stat failures</h2>
+    <p class="infos">We have <span class="info">{{total_errs}}</span> types of stat failures.</p>
+    <table id="failure-table">
+        <thead>
+            <th>Input</th>
+            <th>Stat</th>
+            <th>Error</th>
+            <th>Total</th>
+            <th>Fail rate</th>
+            <th>Example</th>
+        </thead>
+        <tbody>
+            %for (failed_stat, f_titles) in failed_stats.iteritems():
+            <tr>
+                <td class='label'>{{failed_stat[0]}}</td>
+                <td class='label'>{{failed_stat[1]}}</td>
+                <td class='text'>{{failed_stat[2]}}</td>
+                <td>{{len(f_titles)}}</td>
+                <td>{{round(len(f_titles) / float(total), 2) * 100}}%</td>
+                <td><a href='https://en.wikipedia.org/wiki/{{f_titles[0].replace(' ', '_')}}'>{{f_titles[0]}}</a></td>
+            </tr>
+            %end
+        </tbody>
+    </table>
+    %end
 %end
-<h2>Fetch failures</h2>
 %fetch_errs = len(fetch_failures)
-<p class="infos">We have <span class="info">{{fetch_errs}}</span> articles with fetch failures.</p>
-<table id="fetch-failure-table">
-    <thead>
-        <th>Article</th>
-        <th>No. input fetch failures</th>
-        <th>Fetch failures</th>
-    </thead>
-    <tbody>
-        %for (failed_input, f_total) in fetch_failures.iteritems():
-        <tr>
-            <td class='label'>{{failed_input}}</td>
-            <td>{{len(f_total)}}</td>
-            <td>{{', '.join(f_total)}}
-        </tr>
-        %end
-    </tbody>
-</table>
+%if fetch_errs > 0:
+    <h2>Fetch failures</h2>
+
+    <p class="infos">We have <span class="info">{{fetch_errs}}</span> articles with fetch failures.</p>
+    <table id="fetch-failure-table">
+        <thead>
+            <th>Article</th>
+            <th>No. input fetch failures</th>
+            <th>Fetch failures</th>
+        </thead>
+        <tbody>
+            %for (failed_input, f_total) in fetch_failures.iteritems():
+            <tr>
+                <td class='label'>{{failed_input}}</td>
+                <td>{{len(f_total)}}</td>
+                <td>{{', '.join(f_total)}}
+            </tr>
+            %end
+        </tbody>
+    </table>
+%end

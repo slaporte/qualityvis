@@ -18,18 +18,18 @@ DEFAULT_PER_CALL = 1  # TODO: make a configurable dictionary of chunk sizes
 DEFAULT_TIMEOUT = 30
 ALL = 20000
 
-from inputs import DEFAULT_INPUTS, DOM, Revisions, Assessment
+from inputs import DEFAULT_INPUTS, DOM, Revisions
 from dashboard import LoupeDashboard
 
 DEFAULT_LIMITS = {  # Backlinks: 100,
             # FeedbackV4: 100,
           DOM: 40,
-          Revisions: 20,
-          Assessment: 20}
+          Revisions: 20}
 
 
 def get_filename(prefix=''):
     return prefix.replace(' ', '_') + '-' + str(int(time.time()))
+
 
 class FancyInputPool(gevent.pool.Pool):
     def __init__(self, limits, *args, **kwargs):
@@ -49,9 +49,10 @@ class FancyInputPool(gevent.pool.Pool):
 
 
 class ArticleLoupe(Greenlet):
-    def __init__(self, title, page_id, input_classes=None, input_pool=None, *args, **kwargs):
+    def __init__(self, title, page_id, page_ns, input_classes=None, input_pool=None, *args, **kwargs):
         self.title = title
         self.page_id = page_id
+        self.page_ns = page_ns
         if input_classes is None:
             input_classes = DEFAULT_INPUTS
         self.inputs = [i(title=self.title,
@@ -154,7 +155,7 @@ class Louper(object):
         print 'Creating Loupes for', len(self.page_ds), 'articles...'
         create_i = 0
         for pd in self.page_ds:
-            al = ArticleLoupe(pd.title, pd.page_id, input_pool=self.input_pool, input_classes=self.input_classes)
+            al = ArticleLoupe(pd.title, pd.page_id, pd.ns, input_pool=self.input_pool, input_classes=self.input_classes)
             create_i += 1
             al.create_i = create_i
             al.link(self.on_loupe_complete)
@@ -181,6 +182,7 @@ class Louper(object):
         output_dict = loupe.results
         output_dict['title'] = loupe.title
         output_dict['id'] = loupe.page_id
+        output_dict['ns'] = loupe.page_ns
         output_dict['times'] = loupe.times
         
         self.output_file.write(json.dumps(output_dict, default=str))
@@ -209,6 +211,10 @@ def parse_args():
                       help="concurrency factor to use when querying the"
                       "Wikipedia API (simultaneous requests)")
 
+    parser.add_option("-R", "--recursive", dest="recursive",
+                      action="store_true", default=False,
+                      help="search category recursively")
+
     parser.add_option("-g", "--grouping", dest="grouping",
                       type="int", default=DEFAULT_PER_CALL,
                       help="how many sub-responses to request per API call")
@@ -231,11 +237,15 @@ def main():
     opts, args = parse_args()
     kwargs = opts.__dict__
     # TODO: better output filenames
-    
+
     if kwargs.get('random'):
         print 'Fetching ', opts.limit, ' random articles...'
         page_ds = wapiti.get_random(opts.limit)
         filename = get_filename('random')
+    elif kwargs.get('recursive'):
+        print 'Fetching members of category', opts.category, '...'
+        page_ds = wapiti.get_category_recursive(opts.category, count=opts.limit, to_zero_ns=True)
+        filename = get_filename(opts.category[:15])
     else:
         print 'Fetching members of category', opts.category, '...'
         page_ds = wapiti.get_category(opts.category, count=opts.limit, to_zero_ns=True)

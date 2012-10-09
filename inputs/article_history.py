@@ -7,6 +7,34 @@ from collections import OrderedDict
 from datetime import datetime
 
 
+def find_rating(text, rating_type='assessment'):
+    if rating_type == 'importance':
+        ratings = re.findall(r'\|\s*((importance)\s*=\s*(.+?))(\b|\|)', text, re.I)
+    else:
+        ratings = re.findall(r'\|\s*((class)\s*=\s*(.+?))(\b|\|)', text, re.I)
+    if not ratings:
+        return None
+    else:
+        return [rating[2].lower() for rating in ratings]
+
+
+def average_rating(project_ratings, rating_type='assessment'):
+    if not project_ratings:
+        return 'no'
+    if rating_type == 'importance':
+        # "Top", "High", "Mid", "Low" and "No"
+        ratings = ['no', 'low', 'mid', 'high', 'top']
+    else:
+        # "FA", "A", "B", "C", "Start", "Stub", "Dab", "Category", "Template", "Book", "Current", "Future", "Redirect", "Needed" and "No"
+        ratings = ['no', 'stub', 'start', 'c', 'b', 'a', 'ga', 'fa']
+    score = 0
+    for r in ratings:
+        if project_ratings.count(r) > 0:
+            score += project_ratings.count(r) * ratings.index(r)
+    average = ratings[int(round(score / float(len(project_ratings))))]
+    return average
+
+
 def find_article_history(text):
     matches = re.findall(r'{{\s*ArticleHistory(.+currentstatus.+?)}}', text, re.DOTALL)
     if not matches:
@@ -115,6 +143,8 @@ class ArticleHistory(Input):
 
     def process(self, f_res):
         ah_text = find_article_history(f_res)
+        assessment_list = find_rating(f_res, rating_type='assessment')
+        importance_list = find_rating(f_res, rating_type='importance')
         if ah_text:
             tmpl_dict = tmpl_text_to_odict(ah_text)
             actions = parse_article_history(tmpl_dict)
@@ -123,7 +153,11 @@ class ArticleHistory(Input):
                   'topic': tmpl_dict.get('topic'),
                   'itndate': parse_date(tmpl_dict.get('itndate')),
                   'dykdate': parse_date(tmpl_dict.get('dykdate')),
-                  'maindate': parse_date(tmpl_dict.get('maindate'))
+                  'maindate': parse_date(tmpl_dict.get('maindate')),
+                  'assessment': average_rating(assessment_list, rating_type='assessment'),
+                  'assessment_count': len(assessment_list),
+                  'importance': average_rating(importance_list, rating_type='importance'),
+                  'importance_count': len(importance_list),
                   }
             if actions:
                 ah['oldest_action_age'] = age_secs(actions[0].date)
@@ -142,4 +176,8 @@ class ArticleHistory(Input):
         'topic': lambda f: f.get('topic', ''),
         'current': lambda f: f.get('current', ''),
         'actions': lambda f: [{'type': action.type, 'result': action.result, 'date': str(action.date)} for action in f.get('actions')],
+        'assessment_average': lambda f: f['assessment'],
+        'assessment_count': lambda f: f['assessment_count'],
+        'importance_average': lambda f: f['importance'],
+        'importance_count': lambda f: f['importance_count']
     }

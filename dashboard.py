@@ -5,6 +5,7 @@ from bottle import static_file
 from collections import defaultdict
 import sys
 import socket
+import wapiti
 
 import psutil
 import os
@@ -35,7 +36,6 @@ def find_port(host=DEFAULT_HOST, start_port=DEFAULT_PORT, end_port=None):
             return p
     return None
 
-# TODO: add ortellius load to meta
 
 class LoupeDashboard(Bottle):
 
@@ -47,11 +47,16 @@ class LoupeDashboard(Bottle):
         self.inputs = louper.input_classes
         self.failed_stats = louper.failed_stats
         self.fetch_failures = louper.fetch_failures
-        
+        self.start_time = time.time()
         self.tpool = None
+        self.toolserver_uptime = self.get_toolserver_uptime()
         self.start_time = kwargs.get('start_time') or time.time()
         self.start_cmd = kwargs.get('start_cmd') or ' '.join(sys.argv)
         self.host_machine = kwargs.get('hostname') or socket.gethostname()
+        self.open_toolserver_queries = self.get_toolserver_openlog()
+        if self.open_toolserver_queries > 0:
+            print '\nNote: there are', self.open_toolserver_queries, 'open queries on toolserver\n'
+        self.send_toolserver_log('start', start_time=self.start_time)
         self.route('/', callback=self.render_dashboard, template='dashboard')
         self.route('/summary', callback=self.get_summary_dict, template='summary')
         self.route('/all_results', callback=self.get_all_results)
@@ -123,6 +128,7 @@ class LoupeDashboard(Bottle):
         ret['input_classes'] = [i.__name__ for i in self.inputs]
         ret['in_progress'] = [o.get_status() for o in self.loupe_pool]
         ret['complete'] = [o.get('status') for o in self.results.values()]
+        ret['toolserver'] = self.toolserver_uptime
         ret['meta'] = self.get_meta_dict()
         ret['failed_stats'] = self.failed_stats
         ret['fetch_failures'] = self.fetch_failures
@@ -134,10 +140,38 @@ class LoupeDashboard(Bottle):
         return ret
 
     def get_report(self):
-        return template('dashboard', self.render_dashboard())
-    
-    def render_dashboard(self):
-        return self.get_dict()
+        return template('dashboard', self.render_dashboard(final=True))
+
+    def get_toolserver_uptime(self):
+        try:
+            res = wapiti.get_json('http://ortelius.toolserver.org:8089/uptime')
+            res['open_queries'] = self.open_toolserver_queries
+        except Exception as e:
+            print 'Error getting toolserver stats:', e
+        return res
+
+    def get_toolserver_openlog(self):
+        try:
+            res = wapiti.get_json('http://ortelius.toolserver.org:8089/openlog')
+        except Exception as e:
+            print 'Error getting toolserver stats:', e
+        return res['openlog']
+
+    def send_toolserver_log(self, action, start_time=0):
+        params = {'action': action, 'hostname': self.host_machine, 'params': self.start_cmd, 'start_time': start_time}
+        try:
+            wapiti.get_url('http://ortelius.toolserver.org:8089/writelog/', params=params)
+        except Exception as e:
+            print 'Error logging:', e
+
+    def render_dashboard(self, final=False):
+        ret = self.get_dict()
+        if final:
+            ret['toolserver_final'] = self.get_toolserver_uptime()
+            self.send_toolserver_log('complete', start_time=self.start_time)
+        else:
+            ret['toolserver_final'] = False
+        return ret
 
     def get_report(self):
         return template('dashboard', self.render_dashboard())

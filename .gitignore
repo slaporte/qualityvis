@@ -14,7 +14,7 @@ pub/
 log*
 fetch.log
 article_html/*.html
-
+*.tab
 node_modules
 html
 src/

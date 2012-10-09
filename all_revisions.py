@@ -4,11 +4,15 @@ import time
 import os
 import oursql
 from bottle_compressor import CompressorPlugin
+import logging
+import json
+from functools import partial
+
 
 compressor_plugin = CompressorPlugin(compress_level=3)
 bottle.install(compressor_plugin)
 
-from functools import partial
+
 #from ujson import dumps
 from bottle import json_dumps as dumps
 better_dumps = partial(dumps, ensure_ascii=False, separators=(',', ':'))
@@ -20,6 +24,46 @@ bottle.default_app().install(JSONPlugin(better_dumps))
 ALL_PROPS = ["rev_sha1", "rev_len", "rev_text_id", "rev_timestamp", "rev_minor_edit", "rev_user_text", "rev_comment", "rev_parent_id", "rev_deleted", "rev_page", "rev_user", "rev_id"]
 
 DESIRED_PROPS = ["rev_sha1", "rev_len", "rev_timestamp", "rev_minor_edit", "rev_user_text", "rev_comment", "rev_deleted", "rev_user", "rev_id"]
+
+LOG_OUTSTANDING_LIMIT = 7200  # 2 hours
+
+class AccessLogger(object):
+    def __init__(self, logfile):
+        self.logfile = logfile
+        self.logger = logging.getLogger('AccessLogger')
+        self.logger.setLevel(logging.INFO)
+        write_handler = logging.FileHandler(logfile)
+        self.logger.addHandler(write_handler)
+
+    def log(self, action, hostname, params, start_time):
+        self.logger.info(json.dumps({'time': time.time(), 'action': action, 'hostname': hostname, 'params': params, 'start_time': start_time}))
+
+    def outstanding(self):
+        # TODO: fix
+        lines = self.read(30)
+        recents = [line for line in lines if line['age'] < LOG_OUTSTANDING_LIMIT]
+        starts = set([(start['hostname'], start['params'], start['start_time']) for start in recents if start['action'] == 'start'])
+        completes = set([(finish['hostname'], finish['params'], finish['start_time']) for finish in recents if finish['action'] == 'complete'])
+        outstanding = starts - completes
+        return {'openlog': len(outstanding)}
+
+    def read(self, no):
+        ret = []
+        history = open(self.logfile, 'r')
+        lines = history.readlines()
+        if not lines[-no:]:
+            return []
+        else:
+            for line in lines[-no:]:
+                line = json.loads(line)
+                time_s = line['time']
+                line['time'] = time.ctime(time_s)
+                line['age'] = round(time.time() - time_s)
+                ret.append(line)
+            return ret[::-1]
+
+
+LOG = AccessLogger('access.log')
 
 
 class ArticleHistory(object):
@@ -71,6 +115,37 @@ class WL(object):
                 ''', (title, namespace))
             self.wers = cursor.fetchall()
             self.dur = time.time() - s_time
+
+
+@route('/writelog/')
+def write_log():
+    action = request.query.action
+    hostname = request.query.hostname
+    params = request.query.params
+    start_time = request.query.start_time
+    if action and hostname and params:
+        LOG.log(action, hostname, params, start_time)
+        return {'log': LOG.read(1), 'write': 'success'}
+    else:
+        return {'write': 'failure'}
+
+
+@route('/readlog')
+@route('/readlog/')
+@route('/readlog/<lines:path>')
+def read_log(lines=10):
+    if type(lines) is not int:
+        try:
+            lines = int(lines)
+        except ValueError:
+            lines = 10
+    return {'log': LOG.read(lines)}
+
+
+@route('/openlog')
+@route('/openlog/')
+def print_open():
+    return LOG.outstanding()
 
 
 @route('/revisions/<title:path>')
