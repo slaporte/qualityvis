@@ -1,5 +1,5 @@
 """
-<name>MultiInput Python Script</name>
+<name>MultiData Python Script</name>
 <description>Executes python script.</description>
 <icon>icons/PythonScript.png</icon>
 <contact>Miha Stajdohar (miha.stajdohar(@at@)gmail.com)</contact> 
@@ -258,12 +258,12 @@ class ScriptItemDelegate(QStyledItemDelegate):
     def setModelData(self, editor, model, index):
         model[index.row()].name = str(editor.text())
         
-class OWMultiInputPythonScript(OWWidget):
+class OWMultiDataPythonScript(OWWidget):
     
     settingsList = ["codeFile", "libraryListSource", "currentScriptIndex", "splitterState"]
                     
     def __init__(self, parent=None, signalManager=None):
-        OWWidget.__init__(self, parent, signalManager, 'MultiInput Python Script')
+        OWWidget.__init__(self, parent, signalManager, 'MultiData Python Script')
         
         self.inputs = [("in_data", ExampleTable, self.setExampleTable, Default + Multiple),
                        ("in_distance", orange.SymMatrix, self.setDistanceMatrix),
@@ -271,7 +271,13 @@ class OWMultiInputPythonScript(OWWidget):
                        ("in_learners", orange.Learner, self.setLearner, Default + Multiple),
                        ("in_classifiers", orange.Classifier, self.setClassifier, Default + Multiple),
                        ("in_misc", object, self.setMisc, Default + Multiple)]
-        self.outputs = [("out_data", ExampleTable), ("out_distance", orange.SymMatrix), ("out_network", Orange.network.Graph), ("out_learner", orange.Learner), ("out_classifier", orange.Classifier, Dynamic)]
+        self.outputs = [("out_data", ExampleTable), 
+                        ("out_distance", orange.SymMatrix), 
+                        ("out_network", Orange.network.Graph), 
+                        ("out_learner", orange.Learner), 
+                        ("out_classifier", orange.Classifier, Dynamic),
+                        ("out_test_results", Orange.evaluation.testing.ExperimentResults),
+                        ("out_misc", object)]
         
         self.in_data = []
         self.in_data_dict = {}   # TODO: switch to weakref?
@@ -373,7 +379,7 @@ class OWMultiInputPythonScript(OWWidget):
         self.mainArea.layout().addWidget(self.splitCanvas)
         
         self.defaultFont = defaultFont = "Monaco" if sys.platform == "darwin" else "Courier"
-        self.textBox = OWGUI.widgetBox(self, 'MultiInput Python script')
+        self.textBox = OWGUI.widgetBox(self, 'MultiData Python script')
         self.splitCanvas.addWidget(self.textBox)
         self.text = PythonScriptEditor(self)
         self.textBox.layout().addWidget(self.text)
@@ -584,7 +590,7 @@ class OWMultiInputPythonScript(OWWidget):
 
 if __name__=="__main__":    
     appl = QApplication(sys.argv)
-    ow = OWMultiInputPythonScript()
+    ow = OWMultiDataPythonScript()
     ow.show()
     appl.exec_()
     ow.saveSettings()
