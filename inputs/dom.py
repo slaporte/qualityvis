@@ -122,7 +122,7 @@ class DOM(Input):
         'ext_link_per_w': lambda f: per_word('.external', f),
 
         # Section-based page structure stats
-        'section': lambda f: get_sections(f),
+        's': lambda f: get_sections(f),
         'refbegin_count': lambda f: len(f('div.refbegin')),
         'reflist_count': lambda f: len(f('div.reflist')),
         'ref_text_count': lambda f: len(f('.reference-text')),

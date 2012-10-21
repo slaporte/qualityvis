@@ -1,0 +1,8 @@
+C_ah_current =
+   0.475356
+   +0.651269 * max(0, d_Earth_score - 0.544615)
+   +0.874525 * max(0, rv_Earth_score - 0.544883)
+   +0.247823 * max(0, 0.544883 - rv_Earth_score)
+   -0.966262 * max(0, rv_Earth_score - 0.802573)
+   -5.327194 * max(0, rv_t_Earth_score - 0.739597)
+   -0.167608 * max(0, 0.739597 - rv_t_Earth_score)

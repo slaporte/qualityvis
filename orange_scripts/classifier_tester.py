@@ -33,7 +33,6 @@ def get_scores(test_data, classifiers, threshold_map=CLASS_THRESHOLDS, keep_attr
         name = str(classifier.name)
         attr_vars[name + '_score'] = orange.FloatVariable(name + '_score')
         attr_vars[name + '_abs_error'] = orange.FloatVariable(name + '_abs_error')
-        attr_vars[name + '_neg_error'] = orange.FloatVariable(name + '_neg_error')
         attr_vars[name + '_b_status'] = orange.EnumVariable(name + '_bucketed_status', values=threshold_map.keys())
     attr_vars['threshold'] = orange.FloatVariable('threshold')
     attrs += attr_vars.values()
@@ -54,27 +53,25 @@ def get_scores(test_data, classifiers, threshold_map=CLASS_THRESHOLDS, keep_attr
     
 def get_experiment_results(scored_data, classifiers, actual_class_feature='R_ah_current'):
     actual_class_var = scored_data.domain[actual_class_feature]
-    ret = Orange.evaluation.testing.ExperimentResults(1, [c.name for c in classifiers], class_values=actual_class_var.values)
     num_classifiers = len(classifiers)
-    tmp_cls_results = defaultdict(list)
+    tmp_results = []
     for inst in scored_data:
         te = Orange.evaluation.testing.TestedExample(n=num_classifiers, actual_class=inst[actual_class_feature])
         for j, c in enumerate(classifiers):
             c_name = str(c.name)
-            te.add_result(actual_class_var(inst[c_name+'_bucketed_status'].value))
-            tmp_cls_results[c_name].append(te)
-    
-    for j, c in enumerate(classifiers):
-        ret.add(tmp_cls_results[c_name], j)
+            te.set_result(j, actual_class_var(inst[c_name+'_bucketed_status'].value), 1.0)
+            tmp_results.append(te)
+
+    ret = Orange.evaluation.testing.ExperimentResults(1, [c.name for c in classifiers], class_values=actual_class_var.values, results=tmp_results)
     return ret
 
 sample_data = in_data[0]
 remaining_data = in_data[1]
 data_scores = get_scores(sample_data, in_classifiers)
-
-res = get_experiment_results(data_scores, in_classifiers)
-
+#data_scores = get_scores(remaining_data, in_classifiers)
+#out_test_results = get_experiment_results(data_scores, in_classifiers)
 out_data = data_scores
+
 """
 Meta attributes (title, etc.)
 Original class
