@@ -2,6 +2,8 @@ import Orange
 from Orange import orange
 from collections import defaultdict
 
+from data_utils import cast_table
+
 CLASS_THRESHOLDS = {'FA': (1.01, .7), 'GA': (0.7, 0.4)}
 
 def discrete_status_domain(c_data):
@@ -27,17 +29,21 @@ def get_scores(test_data, classifiers, threshold_map=CLASS_THRESHOLDS, keep_attr
     if keep_attrs:
         attrs = test_data.domain.attributes.clone()
     else:
-        attrs = [test_data.domain['R_ah_current']]
+        attrs = []
     attr_vars = {}
     for classifier in classifiers:
         name = str(classifier.name)
         attr_vars[name + '_score'] = orange.FloatVariable(name + '_score')
         attr_vars[name + '_abs_error'] = orange.FloatVariable(name + '_abs_error')
         attr_vars[name + '_b_status'] = orange.EnumVariable(name + '_bucketed_status', values=threshold_map.keys())
-    attr_vars['threshold'] = orange.FloatVariable('threshold')
     attrs += attr_vars.values()
+    
     new_domain = Orange.data.Domain(attrs, test_data.domain.class_var)
     new_domain.addmetas(test_data.domain.getmetas())
+    threshold_var = orange.FloatVariable('threshold')
+    new_meta_id = Orange.feature.Descriptor.new_meta_id()
+    new_domain.add_meta(new_meta_id, threshold_var)
+    
     ret = orange.ExampleTable(new_domain, test_data)
     for classifier in classifiers:
         name = str(classifier.name)
@@ -48,7 +54,7 @@ def get_scores(test_data, classifiers, threshold_map=CLASS_THRESHOLDS, keep_attr
             ret[i][name + '_score'] = attr_vars[name + '_score'](score.value)
             ret[i][name + '_abs_error'] = attr_vars[name + '_abs_error'](max(0, threshold_min - score.value) + max(0, score.value - threshold_max))
             ret[i][name + '_bucketed_status'] = attr_vars[name + '_b_status'](bucketed_status)
-            ret[i]['threshold'] = attr_vars['threshold'](threshold_min)
+            ret[i]['threshold'] = threshold_var(threshold_min)
     return ret
     
 def get_experiment_results(scored_data, classifiers, actual_class_feature='R_ah_current'):
@@ -65,12 +71,11 @@ def get_experiment_results(scored_data, classifiers, actual_class_feature='R_ah_
     ret = Orange.evaluation.testing.ExperimentResults(1, [c.name for c in classifiers], class_values=actual_class_var.values, results=tmp_results)
     return ret
 
-sample_data = in_data[0]
-remaining_data = in_data[1]
-data_scores = get_scores(sample_data, in_classifiers)
-#data_scores = get_scores(remaining_data, in_classifiers)
+all_data = in_data[0]
+data_scores = get_scores(all_data, in_classifiers)
+out_data = cast_table(data_scores, new_class_var=data_scores.domain['R_ah_current']
 #out_test_results = get_experiment_results(data_scores, in_classifiers)
-out_data = data_scores
+#out_data = data_scores
 
 """
 Meta attributes (title, etc.)
