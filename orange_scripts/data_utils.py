@@ -30,23 +30,52 @@ out_data = orange.ExampleTable(new_domain, in_data)
 """
 
 # TODO: get_boolean_feature(new_feat_name, predicate, default=False)
+class DiscreteValueMapper(object):
+    """
+    Maps from one value to another, based on a dictionary, primarily used
+    in Feature.get_value_from scenarios.
+    
+    A class was used to get around pickling issues. Trained classifiers
+    typically include a domain, which includes Features, which must all be
+    picklable.
+    """
+    def __init__(self, source_feat_name, value_map, default):
+        self.source_feat_name = source_feat_name
+        self.value_map = value_map
+        self.default = default
 
-def get_mapped_c_feature(source_feat_name, new_feat_name, value_map, default=0.0):
-    ret, _ = Orange.feature.Descriptor.make(new_feat_name,
-                                            Orange.feature.Type.Continuous)
-    def get_mapped_value(inst, r):
+    def __call__(self, inst, r):
         try:
-            val = inst[source_feat_name]
+            val = inst[self.source_feat_name]
             if val.is_DK() or val.is_DC():
                 return val.value
             real_value = val.value
         except (TypeError, AttributeError):
             # unknown attribute or no 'value' attribute
-            return default
-        return value_map.get(real_value, default)
-    ret.get_value_from = get_mapped_value
-    ret.source_feat_name = source_feat_name  # custom; useful for sanity checking
+            return self.default
+        return self.value_map.get(real_value, self.default)
+
+    
+def make_c_feature(name):
+    """convenience method for Orange.feature.Descriptor.make"""
+    ret, _ = Orange.feature.Descriptor.make(name,
+                                            Orange.feature.Type.Continuous)
     return ret
+
+# question: will a mars classifier trained to return a continuous score still
+# return that score if the input instance has a discrete class?
+
+
+def get_mapped_c_feature(source_feat_name, new_feat_name, value_map, default=0.0):
+    ret = make_c_feature(new_feat_name)
+    ret.get_value_from = DiscreteValueMapper(source_feat_name, value_map, default)
+
+    ret.__dict__['source_feat_name'] = source_feat_name
+    # custom; useful for sanity checking
+    # use dict to get around warnings. easier than silly filters.
+    
+    return ret
+
 
 def cast_domain(in_domain, attr_selector=None, new_class_var=None, keep_metas=True):
     if new_class_var is None:
@@ -96,6 +125,11 @@ def get_table_attr_names(in_table, incl_metas=True):
     return [a.name for a in to_search]
 
 
+# new_attrs/precompute
+# if precompute, make dictionary of new features to calculation functions
+#      and set get_value_from to None on all new features
+# 
+# finally: re-set all get_value_from operations
 def cast_table(in_table, attr_selector=None, new_class_var=None, keep_metas=True):
     try:
         if new_class_var.source_feat_name not in get_table_attr_names(in_table):
