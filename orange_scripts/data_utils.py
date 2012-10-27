@@ -30,30 +30,67 @@ out_data = orange.ExampleTable(new_domain, in_data)
 """
 
 # TODO: get_boolean_feature(new_feat_name, predicate, default=False)
+class DiscreteValueMapper(object):
+    """
+    Maps from one value to another, based on a dictionary, primarily used
+    in Feature.get_value_from scenarios.
+    
+    A class was used to get around pickling issues. Trained classifiers
+    typically include a domain, which includes Features, which must all be
+    picklable.
+    """
+    def __init__(self, source_feat_name, value_map, default):
+        self.source_feat_name = source_feat_name
+        self.value_map = value_map
+        self.default = default
 
-
-def get_mapped_c_feature(source_feat_name, new_feat_name, value_map, default=0.0):
-    ret, _ = Orange.feature.Descriptor.make(new_feat_name,
-                                            Orange.feature.Type.Continuous)
-
-    def get_mapped_value(inst, r):
+    def __call__(self, inst, r):
         try:
-            val = inst[source_feat_name]
+            val = inst[self.source_feat_name]
             if val.is_DK() or val.is_DC():
                 return val.value
             real_value = val.value
         except (TypeError, AttributeError):
             # unknown attribute or no 'value' attribute
-            return default
-        return value_map.get(real_value, default)
-    ret.get_value_from = get_mapped_value
-    ret.source_feat_name = source_feat_name  # custom; useful for sanity checking
+            return self.default
+        return self.value_map.get(real_value, self.default)
+
+    
+def make_c_feature(name):
+    """convenience method for Orange.feature.Descriptor.make"""
+    ret, _ = Orange.feature.Descriptor.make(name,
+                                            Orange.feature.Type.Continuous)
     return ret
 
 
-def cast_domain(in_domain, attr_selector=None, new_class_var=None, keep_metas=True):
-    if new_class_var is None:
-        new_class_var = in_domain.class_var
+def make_d_feature(name, values):
+    """This is pretty fast and loose; there are cases where
+    discrete features are incompatible, be careful."""
+    ret, _ = Orange.feature.Descriptor.make(name,
+                                            Orange.feature.Type.Discrete,
+                                            unordered_values=values)
+    return ret
+
+# question: will a mars classifier trained to return a continuous score still
+# return that score if the input instance has a discrete class?
+
+
+def get_mapped_c_feature(source_feat_name, new_feat_name, value_map, default=0.0):
+    ret = make_c_feature(new_feat_name)
+    ret.get_value_from = DiscreteValueMapper(source_feat_name, value_map, default)
+
+    ret.__dict__['source_feat_name'] = source_feat_name
+    # custom; useful for sanity checking
+    # use dict to get around warnings. easier than silly filters.
+    
+    return ret
+
+
+def cast_domain(in_domain,
+                attr_selector=None,
+                new_attrs=None,
+                new_class_var=None,
+                keep_metas=True):
 
     if callable(attr_selector):
         predicate = attr_selector
@@ -67,12 +104,21 @@ def cast_domain(in_domain, attr_selector=None, new_class_var=None, keep_metas=Tr
         raise TypeError('expected an iterable of attribute names, callable'
                         'predicate, or feature name prefix.')
 
+    if new_attrs is None:
+        new_attrs = []
     old_attrs = in_domain.attributes.clone()
+    all_attrs = old_attrs + new_attrs
+    kept_attrs = [a for a in old_attrs if predicate(a.name)]
+    kept_attrs.extend(new_attrs)
+
     old_class_var = in_domain.class_var
-    
-    new_attrs = [a for a in old_attrs if predicate(a.name)]
-    
-    new_domain = Orange.data.Domain(new_attrs, new_class_var)
+    if isinstance(new_class_var, basestring):
+        matches = [a for a in all_attrs if a.name == new_class_var]
+        new_class_var = matches[0]
+    elif new_class_var is None:
+        new_class_var = old_class_var
+
+    new_domain = Orange.data.Domain(kept_attrs, new_class_var)
     if keep_metas:
         new_domain.addmetas(in_domain.getmetas())
         
@@ -98,14 +144,35 @@ def get_table_attr_names(in_table, incl_metas=True):
                                 class_var)
     return [a.name for a in to_search]
 
-
-def cast_table(in_table, attr_selector=None, new_class_var=None, keep_metas=True):
+from collections import Mapping, Iterable
+def cast_table(in_table,
+               attr_selector=None,
+               new_attrs=None,
+               new_class_var=None,
+               keep_metas=True):
     try:
         if new_class_var.source_feat_name not in get_table_attr_names(in_table):
             warnings.warn('Source feature for new class variable not present in source'
                           ' table domain.')
     except (TypeError, AttributeError):
         pass  # no source_feat_name available
-            
-    new_domain = cast_domain(in_table.domain, attr_selector, new_class_var, keep_metas)
-    return Orange.data.Table(new_domain, in_table)
+
+    if isinstance(new_attrs, Mapping):
+        new_attr_values = new_attrs.values()
+        new_attrs = new_attrs.keys()
+        if any([len(val_list) < len(in_table) for val_list in new_attr_values]):
+            raise ValueError('Value lists for new attributes must be as long or'
+                             ' longer than the number of examples in a table.')
+    else:
+        new_attr_values = None
+    
+    new_domain = cast_domain(in_table.domain, attr_selector, new_attrs, new_class_var, keep_metas)
+    ret = Orange.data.Table(new_domain, in_table)
+
+    # Will this cause problems with mutating examples that are in other tables?
+    if new_attr_values:
+        for i, attr in enumerate(new_attrs):
+            for j, ex in enumerate(ret):
+                ret[j][attr] = new_attr_values[i][j]
+    return ret
+
