@@ -31,9 +31,11 @@ out_data = orange.ExampleTable(new_domain, in_data)
 
 # TODO: get_boolean_feature(new_feat_name, predicate, default=False)
 
+
 def get_mapped_c_feature(source_feat_name, new_feat_name, value_map, default=0.0):
     ret, _ = Orange.feature.Descriptor.make(new_feat_name,
                                             Orange.feature.Type.Continuous)
+
     def get_mapped_value(inst, r):
         try:
             val = inst[source_feat_name]
@@ -47,6 +49,7 @@ def get_mapped_c_feature(source_feat_name, new_feat_name, value_map, default=0.0
     ret.get_value_from = get_mapped_value
     ret.source_feat_name = source_feat_name  # custom; useful for sanity checking
     return ret
+
 
 def cast_domain(in_domain, attr_selector=None, new_class_var=None, keep_metas=True):
     if new_class_var is None:
