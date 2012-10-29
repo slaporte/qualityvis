@@ -1,8 +1,9 @@
 from data_utils import cast_table
 from Orange.regression.earth import EarthLearner
+import attr_lists
 
 if globals().get('in_data'):
-    out_data = cast_table(in_data, attr_selector='rv_wo_undid_')
+    out_data = cast_table(in_data, attr_selector=)
 
     out_classifier = EarthLearner(out_data, 
         degree=1, 

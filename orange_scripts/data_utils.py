@@ -1,11 +1,11 @@
 import itertools
 import warnings
+from collections import Mapping
 
 import Orange
-from Orange import orange
 
 """
-C_ah_current = Orange.feature.Continuous("C_ah_current")    
+C_ah_current = Orange.feature.Continuous("C_ah_current")
 
 def c_ah(inst, r):
     if inst['R_ah_current'] == 'FA':
@@ -30,11 +30,13 @@ out_data = orange.ExampleTable(new_domain, in_data)
 """
 
 # TODO: get_boolean_feature(new_feat_name, predicate, default=False)
+
+
 class DiscreteValueMapper(object):
     """
     Maps from one value to another, based on a dictionary, primarily used
     in Feature.get_value_from scenarios.
-    
+
     A class was used to get around pickling issues. Trained classifiers
     typically include a domain, which includes Features, which must all be
     picklable.
@@ -55,7 +57,7 @@ class DiscreteValueMapper(object):
             return self.default
         return self.value_map.get(real_value, self.default)
 
-    
+
 def make_c_feature(name):
     """convenience method for Orange.feature.Descriptor.make"""
     ret, _ = Orange.feature.Descriptor.make(name,
@@ -82,7 +84,7 @@ def get_mapped_c_feature(source_feat_name, new_feat_name, value_map, default=0.0
     ret.__dict__['source_feat_name'] = source_feat_name
     # custom; useful for sanity checking
     # use dict to get around warnings. easier than silly filters.
-    
+
     return ret
 
 
@@ -121,9 +123,9 @@ def cast_domain(in_domain,
     new_domain = Orange.data.Domain(kept_attrs, new_class_var)
     if keep_metas:
         new_domain.addmetas(in_domain.getmetas())
-        
+
     metas = new_domain.getmetas()
-    if new_domain.class_var !=  old_class_var and old_class_var not in metas:
+    if new_domain.class_var != old_class_var and old_class_var not in metas:
         new_meta_id = Orange.feature.Descriptor.new_meta_id()
         new_domain.add_meta(new_meta_id, old_class_var)
     return new_domain
@@ -144,7 +146,7 @@ def get_table_attr_names(in_table, incl_metas=True):
                                 class_var)
     return [a.name for a in to_search]
 
-from collections import Mapping, Iterable
+
 def cast_table(in_table,
                attr_selector=None,
                new_attrs=None,
@@ -165,7 +167,7 @@ def cast_table(in_table,
                              ' longer than the number of examples in a table.')
     else:
         new_attr_values = None
-    
+
     new_domain = cast_domain(in_table.domain, attr_selector, new_attrs, new_class_var, keep_metas)
     ret = Orange.data.Table(new_domain, in_table)
 
@@ -175,4 +177,3 @@ def cast_table(in_table,
             for j, ex in enumerate(ret):
                 ret[j][attr] = new_attr_values[i][j]
     return ret
-
