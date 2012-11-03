@@ -173,6 +173,9 @@ class LoupeDashboard(Bottle):
             ret['toolserver_final'] = False
         return ret
 
+    def get_report(self):
+        return template('dashboard', self.render_dashboard())
+
     def serve_static(self, filepath):
         from os.path import dirname
         asset_dir = dirname(__file__) + '/assets'

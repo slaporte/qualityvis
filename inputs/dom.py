@@ -21,11 +21,11 @@ def section_stats(headers):
     all_headers = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7']
     totals = []
     for header in hs:
-        if header.getnext() is not None:
+        if header.getnext() is not None:  # TODO: the next item after an h1 is #bodyContents div
             pos = header.getnext()
             text = ''
             while pos.tag not in all_headers:
-                text += ' ' + pos.text_content()
+                text += ' ' + pos.text_content()  # TODO: the references section may skew the no. words under an h2
                 if pos.getnext() is not None:
                     pos = pos.getnext()
                 else:
@@ -35,6 +35,24 @@ def section_stats(headers):
     dists['header'] = dist_stats([len(header.split()) for header, t in totals])
     dists['text'] = dist_stats([text for h, text in totals])
     return dists
+
+
+def get_sections(pq):
+    dist = {}
+    depth = {}
+    total_words = 0
+    headers = ['h2', 'h3', 'h4', 'h5', 'h6', 'h7']  
+    for header in headers:
+        sec_stats = section_stats(pq(header))
+        if sec_stats['header']['count'] > 0:
+            dist[header] = sec_stats
+            words = sec_stats['text']['count'] * sec_stats['text']['mean']
+            total_words += words
+            depth[header] = words
+    if total_words > 0:
+        for header in depth.keys():
+            depth[header] = depth[header] / total_words
+    return {'dist': dist, 'depth': depth}
 
 
 def element_words_dist(elem):
@@ -104,10 +122,7 @@ class DOM(Input):
         'ext_link_per_w': lambda f: per_word('.external', f),
 
         # Section-based page structure stats
-        'h2': lambda f: section_stats(f('h2')),
-        'h3': lambda f: section_stats(f('h3')),
-        'h4': lambda f: section_stats(f('h4')),
-        'h5': lambda f: section_stats(f('h5')),
+        's': lambda f: get_sections(f),
         'refbegin_count': lambda f: len(f('div.refbegin')),
         'reflist_count': lambda f: len(f('div.reflist')),
         'ref_text_count': lambda f: len(f('.reference-text')),

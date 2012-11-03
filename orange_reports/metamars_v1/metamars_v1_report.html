@@ -1,0 +1,216 @@
+<html>
+<head>
+	<title>Orange viewer</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+
+<style>
+html, body, table {
+	font:normal 10px verdana;
+	margin:0px;
+	padding:0;
+	border:0 none;	
+}
+p {
+	margin:5px;
+}
+
+h1, h2 , h3, h4, h5 {
+   font-family: verdana;
+   width: 100%;
+   padding: 1px;
+   margin: 2px;
+   font-size:100%;
+}
+
+h1 {
+   color: white;
+   background-color: black;
+   padding-left: 2px;
+   margin-top: 12px;
+}
+
+h2 {
+   background-color: #fdffd5;
+   border-bottom: 1px solid black;
+   padding-left: 2px;
+}
+
+ul {
+   margin-left: 10px;
+}
+
+div.insideh1 {
+   padding-left: 4px;
+}
+
+.settings {
+	background-image:url(ext-2.0-rc1/examples/shared/icons/fam/folder_wrench.png);
+}
+.nav {
+	background-image:url(ext-2.0-rc1/examples/shared/icons/fam/folder_go.png);
+}
+
+span.timestamp {
+    position: absolute;
+	right: 40px;
+	color:#dddddd;
+}
+
+div.selected {
+	border: 1px solid black;
+	padding: 3px;
+	/* background-color: #FDFFA5; */
+	margin: 4px;
+}
+
+div.normal {
+	border: 0px;
+	padding: 3px;
+	/* background-color: #FDFFD5;*/
+	margin: 5px;
+}
+
+</style>
+
+<body><table width="100%"><tr><td valign="top"><p style="padding-top:25px;">Index</p><a href="#N002">Confusion Matrix</a><br/><a href="#N004">MetaMars</a><br/><a href="#N005">Confusion Matrix (2)</a><br/><a href="#N006">Confusion Matrix (2)</a><br/><a href="#N007">Confusion Matrix (2)</a><br/><a href="#N008">Confusion Matrix (2)</a></td><td>
+        <div id="N002" onClick="myself.changeItem(this.id);">
+            <a name="N002" />
+            <h1>Confusion Matrix<span class="timestamp">Wed Oct 17 12, 02:20:05</span></h1>
+            <div class="insideh1">
+                
+
+<h2>Contents</h2>
+
+    <ul><b>Learner: </b>metamars<br/><b>Data: </b>Proportions of predicted<br/></ul>
+
+
+<h2>Matrix</h2>
+
+<table>
+<tr><td></td><td align="center"><b>&nbsp;&nbsp;FA&nbsp;&nbsp;</b></td><td align="center"><b>&nbsp;&nbsp;GA&nbsp;&nbsp;</b></td></tr>
+<tr><th align="right"><b>FA</b></th><td align="center"> 78.4 %  </td><td align="center"> 18.2 %  </td><th align="right"><b> 2482 </b></th></tr>
+<tr><th align="right"><b>GA</b></th><td align="center"> 21.6 %  </td><td align="center"> 81.8 %  </td><th align="right"><b> 2412 </b></th></tr>
+<tr><th></th><td align="center"><b> 2647 </b></td><td align="center"><b> 2247 </b></td><td align="center"><b> 4894 </b></td></tr>
+</table>
+<p><b>Note:</b> columns represent predictions, row represent true classes</p>
+            </div>
+        </div>
+        
+
+        <div id="N004" onClick="myself.changeItem(this.id);">
+            <a name="N004" />
+            <h1>MetaMars<span class="timestamp">Wed Oct 17 12, 02:25:32</span></h1>
+            <div class="insideh1">
+                
+
+<h2>Learning parameters</h2>
+
+    <ul><b>Degree: </b>1<br/><b>Terms: </b>10<br/><b>Knot penalty: </b>1.00<br/></ul>
+
+
+<h2>Data</h2>
+
+    <ul><b>Examples: </b>2098<br/><b>Attributes: </b>4 (rv_t_Earth_score, rv_Earth_score, d_Earth_score, d_rel_Earth_score)<br/><b>Meta attributes: </b>21 (threshold, R_ah_current, Source_group, rv_wo_undid_latest_date, rv_wo_undid_first_date, rv_undid_latest_date, rv_undid_first_date, rv_t_wo_undid_latest_date, rv_t_wo_undid_first_date, rv_t_undid_latest_date, rv_t_undid_first_date, rv_t_all_latest_date, rv_t_all_first_date, rv_all_latest_date, rv_all_first_date, ah_importance_count, ah_assessment_count, ah_actions, title, R_ah_topic, id)<br/><b>Class: </b>C_ah_current<br/></ul>
+
+            </div>
+        </div>
+        
+
+        <div id="N005" onClick="myself.changeItem(this.id);">
+            <a name="N005" />
+            <h1>Confusion Matrix (2)<span class="timestamp">Wed Oct 17 12, 02:26:06</span></h1>
+            <div class="insideh1">
+                
+
+<h2>Contents</h2>
+
+    <ul><b>Learner: </b>rv_t_Earth<br/><b>Data: </b>Proportions of predicted<br/></ul>
+
+
+<h2>Matrix</h2>
+
+<table>
+<tr><td></td><td align="center"><b>&nbsp;&nbsp;FA&nbsp;&nbsp;</b></td><td align="center"><b>&nbsp;&nbsp;GA&nbsp;&nbsp;</b></td></tr>
+<tr><th align="right"><b>FA</b></th><td align="center"> 60.4 %  </td><td align="center"> 32.0 %  </td><th align="right"><b> 9892 </b></th></tr>
+<tr><th align="right"><b>GA</b></th><td align="center"> 39.6 %  </td><td align="center"> 68.0 %  </td><th align="right"><b> 9684 </b></th></tr>
+<tr><th></th><td align="center"><b> 12784 </b></td><td align="center"><b> 6792 </b></td><td align="center"><b> 19576 </b></td></tr>
+</table>
+<p><b>Note:</b> columns represent predictions, row represent true classes</p>
+            </div>
+        </div>
+        
+
+        <div id="N006" onClick="myself.changeItem(this.id);">
+            <a name="N006" />
+            <h1>Confusion Matrix (2)<span class="timestamp">Wed Oct 17 12, 02:26:11</span></h1>
+            <div class="insideh1">
+                
+
+<h2>Contents</h2>
+
+    <ul><b>Learner: </b>d_rel_Earth<br/><b>Data: </b>Proportions of predicted<br/></ul>
+
+
+<h2>Matrix</h2>
+
+<table>
+<tr><td></td><td align="center"><b>&nbsp;&nbsp;FA&nbsp;&nbsp;</b></td><td align="center"><b>&nbsp;&nbsp;GA&nbsp;&nbsp;</b></td></tr>
+<tr><th align="right"><b>FA</b></th><td align="center"> 71.4 %  </td><td align="center"> 24.4 %  </td><th align="right"><b> 9892 </b></th></tr>
+<tr><th align="right"><b>GA</b></th><td align="center"> 28.6 %  </td><td align="center"> 75.6 %  </td><th align="right"><b> 9684 </b></th></tr>
+<tr><th></th><td align="center"><b> 10892 </b></td><td align="center"><b> 8684 </b></td><td align="center"><b> 19576 </b></td></tr>
+</table>
+<p><b>Note:</b> columns represent predictions, row represent true classes</p>
+            </div>
+        </div>
+        
+
+        <div id="N007" onClick="myself.changeItem(this.id);">
+            <a name="N007" />
+            <h1>Confusion Matrix (2)<span class="timestamp">Wed Oct 17 12, 02:26:13</span></h1>
+            <div class="insideh1">
+                
+
+<h2>Contents</h2>
+
+    <ul><b>Learner: </b>rv_Earth<br/><b>Data: </b>Proportions of predicted<br/></ul>
+
+
+<h2>Matrix</h2>
+
+<table>
+<tr><td></td><td align="center"><b>&nbsp;&nbsp;FA&nbsp;&nbsp;</b></td><td align="center"><b>&nbsp;&nbsp;GA&nbsp;&nbsp;</b></td></tr>
+<tr><th align="right"><b>FA</b></th><td align="center"> 76.6 %  </td><td align="center"> 20.9 %  </td><th align="right"><b> 9892 </b></th></tr>
+<tr><th align="right"><b>GA</b></th><td align="center"> 23.4 %  </td><td align="center"> 79.1 %  </td><th align="right"><b> 9684 </b></th></tr>
+<tr><th></th><td align="center"><b> 10404 </b></td><td align="center"><b> 9172 </b></td><td align="center"><b> 19576 </b></td></tr>
+</table>
+<p><b>Note:</b> columns represent predictions, row represent true classes</p>
+            </div>
+        </div>
+        
+
+        <div id="N008" onClick="myself.changeItem(this.id);">
+            <a name="N008" />
+            <h1>Confusion Matrix (2)<span class="timestamp">Wed Oct 17 12, 02:26:16</span></h1>
+            <div class="insideh1">
+                
+
+<h2>Contents</h2>
+
+    <ul><b>Learner: </b>d_Earth<br/><b>Data: </b>Proportions of predicted<br/></ul>
+
+
+<h2>Matrix</h2>
+
+<table>
+<tr><td></td><td align="center"><b>&nbsp;&nbsp;FA&nbsp;&nbsp;</b></td><td align="center"><b>&nbsp;&nbsp;GA&nbsp;&nbsp;</b></td></tr>
+<tr><th align="right"><b>FA</b></th><td align="center"> 75.1 %  </td><td align="center"> 23.1 %  </td><th align="right"><b> 9892 </b></th></tr>
+<tr><th align="right"><b>GA</b></th><td align="center"> 24.9 %  </td><td align="center"> 76.9 %  </td><th align="right"><b> 9684 </b></th></tr>
+<tr><th></th><td align="center"><b> 10324 </b></td><td align="center"><b> 9252 </b></td><td align="center"><b> 19576 </b></td></tr>
+</table>
+<p><b>Note:</b> columns represent predictions, row represent true classes</p>
+            </div>
+        </div>
+        </td></tr></table>
+
+ </body>
+</html>
