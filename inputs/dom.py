@@ -111,6 +111,7 @@ class DOM(Input):
         'refbegin_count': lambda f: len(f('div.refbegin')),
         'reflist_count': lambda f: len(f('div.reflist')),
         'ref_text_count': lambda f: len(f('.reference-text')),
+        'bold_terms_in_first_p': lambda f: len(f('p:first b')),
         'has_ext_link_sect': lambda f:  len(f('#External_links')),
         'ext_link_sect_li_count': lambda f: len(f('#External_links').parent().nextAll('ul').children()),
         'see_also_sect_li_count': lambda f: len(f('#See_also').parent().nextAll('ul').children()),
