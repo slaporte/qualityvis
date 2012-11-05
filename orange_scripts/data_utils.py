@@ -1,5 +1,6 @@
 import itertools
 import warnings
+from collections import Counter, OrderedDict, Mapping, Iterable
 
 import Orange
 from Orange import orange
@@ -119,7 +120,7 @@ def get_table_attr_names(in_table, incl_metas=True):
                                 class_var)
     return [a.name for a in to_search]
 
-from collections import Mapping, Iterable
+
 def cast_table(in_table,
                attr_selector=None,
                new_attrs=None,
@@ -151,3 +152,27 @@ def cast_table(in_table,
                 ret[j][attr] = new_attr_values[i][j]
     return ret
 
+
+def get_special_attr_ratio(data):
+    ret = {}
+    counter = Counter()
+    attr_names = [a.name for a in data.domain.attributes]
+    for i in data:
+        counter.update([v.variable.name for v in i if v.is_special()])
+        
+    data_len = len(data)+0.0
+    for an in attr_names:
+        ret[an] = counter[an]/data_len
+        ret = OrderedDict(sorted(ret.items(), key=lambda x: x[1], reverse=True))
+    return ret
+
+
+def clean_missing_data(data, attr_threshold=0.06):
+    missing_attr_ratios = get_special_attr_ratio(data)
+    kept_attrs = set()
+    for k,v in missing_attr_ratios.items():
+        if v < attr_threshold:
+            kept_attrs.add(k)
+    kept_attr_data = cast_table(data, attr_selector=kept_attrs)
+    clean_instances = [i for i, x in enumerate(kept_attr_data) if not any([v.is_special() for v in x])]
+    return kept_attr_data.get_items(clean_instances)
