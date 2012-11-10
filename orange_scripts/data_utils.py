@@ -1,33 +1,9 @@
 import itertools
 import warnings
+from collections import Counter, OrderedDict, Mapping, Iterable
 
 import Orange
 from Orange import orange
-
-"""
-C_ah_current = Orange.feature.Continuous("C_ah_current")    
-
-def c_ah(inst, r):
-    if inst['R_ah_current'] == 'FA':
-        return 0.9
-    elif inst['R_ah_current'] == 'GA':
-        return 0.5
-    else:
-        return 0.0
-
-C_ah_current.get_value_from = c_ah
-
-new_domain = Orange.data.Domain(attributes, C_ah_current)
-metas = in_data.domain.getmetas()
-new_domain.addmetas(metas)
-
-old_class_var = in_data.domain.class_var
-if new_domain.class_var != old_class_var and old_class_var not in metas:
-    new_meta_id = Orange.feature.Descriptor.new_meta_id()
-    new_domain.add_meta(new_meta_id, old_class_var)
-
-out_data = orange.ExampleTable(new_domain, in_data)
-"""
 
 # TODO: get_boolean_feature(new_feat_name, predicate, default=False)
 class DiscreteValueMapper(object):
@@ -144,7 +120,7 @@ def get_table_attr_names(in_table, incl_metas=True):
                                 class_var)
     return [a.name for a in to_search]
 
-from collections import Mapping, Iterable
+
 def cast_table(in_table,
                attr_selector=None,
                new_attrs=None,
@@ -176,3 +152,27 @@ def cast_table(in_table,
                 ret[j][attr] = new_attr_values[i][j]
     return ret
 
+
+def get_special_attr_ratio(data):
+    ret = {}
+    counter = Counter()
+    attr_names = [a.name for a in data.domain.attributes]
+    for i in data:
+        counter.update([v.variable.name for v in i if v.is_special()])
+        
+    data_len = len(data)+0.0
+    for an in attr_names:
+        ret[an] = counter[an]/data_len
+        ret = OrderedDict(sorted(ret.items(), key=lambda x: x[1], reverse=True))
+    return ret
+
+
+def clean_missing_data(data, attr_threshold=0.06):
+    missing_attr_ratios = get_special_attr_ratio(data)
+    kept_attrs = set()
+    for k,v in missing_attr_ratios.items():
+        if v < attr_threshold:
+            kept_attrs.add(k)
+    kept_attr_data = cast_table(data, attr_selector=kept_attrs)
+    clean_instances = [i for i, x in enumerate(kept_attr_data) if not any([v.is_special() for v in x])]
+    return kept_attr_data.get_items(clean_instances)
