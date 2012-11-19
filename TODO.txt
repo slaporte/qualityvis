@@ -1,14 +1,12 @@
-* Resolve jsdom memory issues (reuse jsdoms, swap innerHTML)
-* Page through category to get all category members.
-* Contextualize inputs
-* Better logging
-* UTF-8 CSV bullllcrap
-* Incremental JSON output
+
+* Weighted distance calculator (also allows for excluding features from distance calculation)
+* Modify PCA widget to support MDP Factor Analysis
+* Parallelize recursive category fetch
 
 ==Scientific, methodic thoughts==
 
-Because the data is so broad and re-interpretable, it's important to be explicit about axioms/assumptions and 
-start from facts, or, when not available, points of most common belief. Here is a hierarchy/gradient of 
+Because the data is so broad and re-interpretable, it's important to be explicit about axioms/assumptions and
+start from facts, or, when not available, points of most common belief. Here is a hierarchy/gradient of
 generality of acceptance ("generally-accepted" as in GAAP):
 
 * Featured articles on the main page
@@ -23,10 +21,10 @@ Other candidate classes eligible for axiomatic ranking:
 * "Did you know..." articles
 * Peer-reviewed articles
 
-All of the above are to varying tempered by time/revision distance. Time because standards change over time, 
+All of the above are to varying tempered by time/revision distance. Time because standards change over time,
 and revision distance because content can change dramatically.
 
-Revision velocity (etc.) can of course also be indicators of positive quality, but those need to be explicitly 
+Revision velocity (etc.) can of course also be indicators of positive quality, but those need to be explicitly
 included/calculated into the score.
 
 Good information quality:
@@ -37,7 +35,7 @@ Good information quality:
  * Appropriately media-diverse
  * Well-integrated into the rest of Wikipedia
 
-Our definition does not entail that the information be accurate, complete, current, or authoritative. 
+Our definition does not entail that the information be accurate, complete, current, or authoritative.
 It also does not entail that the information is important/significant. Measuring these factors is
 fraught with complication, or not possible at all. At best we can provide insights and proxies for people
 to draw their own conclusions.
@@ -63,7 +61,7 @@ of the scale represents low Information Quality.
 
 Partially-supportable hypotheses:
  1. Candidates for deletion receive low scores. (needs wikification and deadend articles, too)
- 2. Recently-assessed stub-class and start-class articles receive low scores. 
+ 2. Recently-assessed stub-class and start-class articles receive low scores.
  3. The predictor generally aligns with the article assessment system, with few user-confirmed instances of major
 misclassifications (e.g., predicting a C-class for an FA-class article)
 

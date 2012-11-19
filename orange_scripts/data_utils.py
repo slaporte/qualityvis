@@ -1,6 +1,6 @@
 import itertools
 import warnings
-from collections import Mapping
+from collections import Counter, OrderedDict, Mapping, Iterable
 
 import Orange
 
@@ -153,3 +153,51 @@ def cast_table(in_table,
                 ret[j][attr] = new_attr_values[i][j]
     return ret
 
+
+def get_special_attr_ratio(data):
+    ret = {}
+    counter = Counter()
+    attr_names = [a.name for a in data.domain.attributes]
+    for i in data:
+        counter.update([v.variable.name for v in i if v.is_special()])
+
+    data_len = len(data)+0.0
+    for an in attr_names:
+        ret[an] = counter[an]/data_len
+        ret = OrderedDict(sorted(ret.items(), key=lambda x: x[1], reverse=True))
+    return ret
+
+
+def clean_missing_data(data, attr_threshold=0.06):
+    missing_attr_ratios = get_special_attr_ratio(data)
+    kept_attrs = set()
+    for k,v in missing_attr_ratios.items():
+        if v < attr_threshold:
+            kept_attrs.add(k)
+    kept_attr_data = cast_table(data, attr_selector=kept_attrs)
+    clean_instances = [i for i, x in enumerate(kept_attr_data) if not any([v.is_special() for v in x])]
+    return kept_attr_data.get_items(clean_instances)
+
+
+def purge_uniform_features(data, limit=2):
+    feat_vals = dict([(x.name, set()) for x in data.domain.features])
+    good_feats = set()
+    for i, feat_name in enumerate(feat_vals):
+        for inst in data:
+            if feat_name in good_feats:
+                continue
+            feat_vals[feat_name].add(inst[i].value)
+            if len(feat_vals[feat_name]) >= limit:
+                good_feats.add(feat_name)
+
+    return cast_table(data, attr_selector=list(good_feats))
+
+
+def get_random_subtable(data, count=None):
+    import random
+    if count is None:
+        count = len(data)/4 or len(data)
+    else:
+        count = min(len(data), count)
+    random_indices = random.sample(range(len(data)), count)
+    return data.get_items(random_indices)

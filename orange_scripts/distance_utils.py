@@ -1,5 +1,5 @@
 from __future__ import unicode_literals
-from collections import Counter
+from collections import Counter, defaultdict
 from itertools import chain
 from functools import partial
 
@@ -11,6 +11,7 @@ from Orange import distance
 
 import data_utils
 
+
 def get_relief_scores(data, k=10, m=400):
     # TODO: better k and n
     relief = Relief(k=k, m=m)
@@ -21,7 +22,7 @@ def get_centered_value(data_points):
     counts = Counter([x.value for x in data_points])
     counts = sorted(counts.items(), key=lambda x: x[1], reverse=True)
     majority_val, majority_count = counts[0]
-    
+
     if data_points[0].var_type == Type.Continuous and \
             majority_count < 0.666*len(data_points):
         return sum([x.value for x in data_points], 0.0)/len(data_points)
@@ -31,7 +32,7 @@ def get_centered_value(data_points):
     else:
        return majority_val
 
-    
+
 def get_class_centroids(data):
     try:
         c_var  = data.domain.class_var
@@ -65,6 +66,20 @@ def get_class_centroids_kmeans(data):
     return ret
 
 
+def get_sigmoid_func(func, data, sigma=2):
+    "sigma is the theoretical 'width' of a standard deviation."
+
+    res = [func(x) for x in data]
+    avg_res = sum(res, 0.0) / len(res)
+    variances = [(v - avg_res) ** 2 for v in res]
+    variance = sum(variances, 0.0) / len(res)
+    std_dev = variance ** 0.5
+    old_func = func
+    out_func = lambda x, rw=None: sigma*( old_func(x) - avg_res) / std_dev
+
+    return out_func
+
+
 def get_norm_func(func, data, avg_center=False, norm_scale=True, zero_center=False):
     if avg_center:
         res = [func(x) for x in data]
@@ -77,7 +92,7 @@ def get_norm_func(func, data, avg_center=False, norm_scale=True, zero_center=Fal
 
     if not norm_scale:
         return func
-    
+
     res = [func(x) for x in data]
     max_res, min_res = max(res), min(res)
     if zero_center:
@@ -115,7 +130,7 @@ def get_class_exemplars(data, ordered_class_vals, count=30):
     class_vals = data.domain.class_var.values
     assert set(class_vals) == set(ordered_class_vals) and \
         len(class_vals) == len(ordered_class_vals) # TODO try/except/bettermsg
-    
+
     centroid_dict = dict(get_class_centroids(data))
     centroid_distances = {}
     dist_tuples = []
@@ -144,3 +159,53 @@ def get_exemplary_centroids(data, *a, **kw):
     exemplar_table = get_exemplary_table(data, *a, **kw)
     return get_class_centroids(exemplar_table)
 
+from Orange.misc import SymMatrix
+
+def compute_attr_dist_matrix(data):
+    import numpy, statc
+
+    attrs = data.domain.attributes
+    matrix = SymMatrix(len(attrs))
+
+    # why not just matrix.items = attrs?
+    matrix.setattr(b'items', attrs)
+
+    m = data.toNumpyMA("A")[0]
+    averages = numpy.ma.average(m, axis=0)
+    filleds = [list(numpy.ma.filled(m[:,i], averages[i])) for i in range(len(attrs))]
+    for a1, f1 in enumerate(filleds):
+        for a2 in range(a1):
+            matrix[a1, a2] = (1.0 - statc.spearmanr(f1, filleds[a2])[0]) / 2.0
+    return matrix
+
+
+def get_redundant_attrs(attr_dists, corr_lower=0.001, corr_upper=0.999):
+    """
+    Returns a list of overcorrelated attribute names.
+    Prioritizes the attributes with shortest name.
+    """
+    overcorrelated_dict = defaultdict(list)
+    attrs = attr_dists.items
+    for i, attr1 in enumerate(attrs):
+        for j in range(0,i):
+            attr2 = attrs[j]
+            corr = attr_dists[i,j]
+            if not corr_lower <= corr <= corr_upper:
+                overcorrelated_dict[attr1.name].append((attr2.name, corr))
+                overcorrelated_dict[attr2.name].append((attr1.name, corr))
+
+    offender_list = sorted(overcorrelated_dict.items(), key=lambda x: len(x[1]), reverse=True)
+
+    corr_sets = set()
+    for attr, friends in overcorrelated_dict.items():
+        corr_sets.add(frozenset([attr] + [f[0] for f in friends]))
+
+    dropped_list = []
+    for cs in corr_sets:
+        long_attr_names = sorted(cs, key=lambda x: len(x))[1:]
+        dropped_list.extend(long_attr_names)
+
+    dropped_set = set(dropped_list)
+    kept_list = [x.name for x in attrs if x.name not in dropped_set]
+
+    return kept_list, list(dropped_set)
