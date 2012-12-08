@@ -19,3 +19,5 @@ node_modules
 html
 src/
 results/*
+build/*
+*.swp
