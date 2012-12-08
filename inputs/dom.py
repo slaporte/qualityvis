@@ -6,8 +6,16 @@ from pyquery import PyQuery
 from stats import dist_stats
 
 
+def get_text(element):
+    if hasattr(element, 'text_content'):  # lxml 2
+        text = element.text_content()
+    else:
+        text = ''.join(element.itertext())
+    return text
+
+
 def word_count(element):
-    return len(element.text_content().split())
+    return len(get_text(element).split())
 
 
 def paragraph_counts(pq):
@@ -16,7 +24,7 @@ def paragraph_counts(pq):
 
 
 def section_stats(headers):
-    hs = [h for h in headers if h.text_content() != 'Contents']
+    hs = [h for h in headers if get_text(h) != 'Contents']
     # how not to write Python: ['h'+str(i) for i in range(1, 8)]
     all_headers = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7']
     totals = []
@@ -25,12 +33,12 @@ def section_stats(headers):
             pos = header.getnext()
             text = ''
             while pos.tag not in all_headers:
-                text += ' ' + pos.text_content()  # TODO: the references section may skew the no. words under an h2
+                text += ' ' + get_text(pos)  # TODO: the references section may skew the no. words under an h2
                 if pos.getnext() is not None:
                     pos = pos.getnext()
                 else:
                     break
-            totals.append((header.text_content().replace('[edit] ', ''), len(text.split())))
+            totals.append((get_text(header).replace('[edit] ', ''), len(text.split())))
     dists = {}
     dists['header'] = dist_stats([len(header.split()) for header, t in totals])
     dists['text'] = dist_stats([text for h, text in totals])
@@ -41,7 +49,7 @@ def get_sections(pq):
     dist = {}
     depth = {}
     total_words = 0
-    headers = ['h2', 'h3', 'h4', 'h5', 'h6', 'h7']  
+    headers = ['h2', 'h3', 'h4', 'h5', 'h6', 'h7']
     for header in headers:
         sec_stats = section_stats(pq(header))
         if sec_stats['header']['count'] > 0:
@@ -56,7 +64,7 @@ def get_sections(pq):
 
 
 def element_words_dist(elem):
-    return lambda f: dist_stats([len(navbox.text_content().split()) for navbox in f(elem)])
+    return lambda f: dist_stats([len(get_text(navbox).split()) for navbox in f(elem)])
 
 
 def get_root(pq):
@@ -133,23 +141,23 @@ class DOM(Input):
         'has_ref_sect': lambda f: len(f('#References')),
         'has_notes_sect': lambda f: len(f('#Notes')),
         'fr_sect_count': lambda f: len(f('#Further_reading')),
-        
+
         # Lead stats; the introductory area before the TOC
         'lead_p_count': lambda f: len(f('#toc').prevAll('p')),
-        
+
         # Hatnotes
         'hn_rellink_count': lambda f: len(f('div.rellink')), # "See also" link for a section
         'hn_dablink_count': lambda f: len(f('div.dablink')), # Disambiguation page links
         'hn_mainlink_count': lambda f: len(f('div.mainarticle')), # Link to main, expanded article
         'hn_seealso_count': lambda f: len(f('div.seealso')), # Generic see also
         'hn_relarticle_count': lambda f: len(f('div.relarticle')), # somehow distinct from rellink
-        
+
         # Inline/link-based stats
         'ref_count': lambda f: len(f('sup.reference')),
         'cite_count': lambda f: len(f('li[id^="cite_note"]')),
         'red_link_count': lambda f: len(f('.new')), # New internal links, aka "red links"
         'ext_link_count': lambda f: len(f('.external')),
-        'int_link_text': lambda f: dist_stats([ len(text.text_content()) for text in f('p a[href^="/wiki/"]')]),
+        'int_link_text': lambda f: dist_stats([ len(get_text(text)) for text in f('p a[href^="/wiki/"]')]),
         'dead_link_count': lambda f: len(f('a[title^="Wikipedia:Link rot"]')),
         'ref_needed_span_count': pq_contains('span', 'citation'),
         'pov_span_count': pq_contains('span', 'neutrality'),
@@ -157,7 +165,7 @@ class DOM(Input):
         # DOM-based category stats, not to be confused with the API-based Input
         'cat_count': lambda f: len(f("#mw-normal-catlinks ul li")),
         'hidden_cat_count': lambda f: len(f('#mw-hidden-catlinks ul li')),
-        
+
         # Media/page richness stats
         'wiki_file_link_count': lambda f: len(f("a[href*='/wiki/File:']")),
         'ipa_count': lambda f: len(f('span[title="pronunciation:"]')),
