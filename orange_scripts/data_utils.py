@@ -3,9 +3,10 @@ import warnings
 from collections import Counter, OrderedDict, Mapping, Iterable
 
 import Orange
-from Orange import orange
 
 # TODO: get_boolean_feature(new_feat_name, predicate, default=False)
+
+
 class DiscreteValueMapper(object):
     """
     Maps from one value to another, based on a dictionary, primarily used
@@ -99,7 +100,7 @@ def cast_domain(in_domain,
         new_domain.addmetas(in_domain.getmetas())
 
     metas = new_domain.getmetas()
-    if new_domain.class_var !=  old_class_var and old_class_var not in metas:
+    if new_domain.class_var != old_class_var and old_class_var not in metas:
         new_meta_id = Orange.feature.Descriptor.new_meta_id()
         new_domain.add_meta(new_meta_id, old_class_var)
     return new_domain

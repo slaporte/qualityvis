@@ -160,7 +160,7 @@ class Revisions(Input):
 
     def fetch(self):
         ret = {}
-        revs = get_json('http://toolserver.org/~slaporte/rs/?title=' + self.page_title.replace(' ', '_'))
+        revs = get_json('http://toolserver.org/~slaporte/rs/all/?title=' + self.page_title.replace(' ', '_'))
         ret['article'] = preprocess_revs(revs['article'])
         ret['talk'] = preprocess_revs(revs['talk'])
 

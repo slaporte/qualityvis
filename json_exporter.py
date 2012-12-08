@@ -15,12 +15,14 @@ CONTINUOUS = OrangeType('c', '')
 DISCRETE = OrangeType('d', '')
 IGNORE = OrangeType('s', 'ignore')
 CLASS = OrangeType('d', 'class')
-meta_features = {'title': OrangeType('s', 'meta'),
-                 'id': OrangeType('s', 'meta'),
-                 'ah_topic': OrangeType('s', 'meta'),
-                 'ah_current': CLASS,
-                 'ah_actions': IGNORE,
-                 'ah_assessment': IGNORE
+META_STR = OrangeType('s', 'meta')
+META_DISCRETE = OrangeType('d', 'meta')
+meta_features = {'title': META_STR,
+                 'id': META_STR,
+                 'ah_topic': META_DISCRETE,
+                 'ah_actions': META_STR,
+                 'ah_assessment': META_DISCRETE,
+                 'ah_current': CLASS
                 }
 DEFAULT_COLUMNS = export_settings.COLUMNS
 
@@ -67,23 +69,24 @@ def get_column_types(dataset, count=100):
             ret[header] = meta_features[header]
             continue
         try:
-            value_set = set(dataset[header])
+            value_set = set(dataset[header]) - set([''])
+            # Orange handles empty string as a missing value
         except Exception as e:
             import pdb;pdb.set_trace()
         try:
-            [float(f) for f in value_set if f is not '']
+            [float(f) for f in value_set]
         except:
             if len(value_set) < 10:
                 ret[header] = DISCRETE
             else:
-                ret[header] = IGNORE
+                ret[header] = META_STR
         else:
-            if len(value_set) > 3:
-                ret[header] = CONTINUOUS
-            elif len(value_set) > 1:
+            if not value_set:
+                ret[header] = IGNORE
+            elif len(value_set) <= 2 and all([type(v) is bool for v in value_set]):
                 ret[header] = DISCRETE
             else:
-                ret[header] = IGNORE
+                ret[header] = CONTINUOUS
 
     return ret
 
@@ -107,11 +110,26 @@ def ordered_yield(data, ordering, default=None):
         yield data.get(o, default)
     return
 
+def tmp_clean_data(data):
+    ret = []
+    for d in data:
+        wc_val = d.get('d_word_count')
+        if wc_val is None:
+            #import pdb;pdb.set_trace()
+            continue
+        elif isinstance(wc_val, basestring):
+            #import pdb;pdb.set_trace()
+            continue
+        else:
+            ret.append(d)
+    return ret
+
 
 def results_to_tsv(file_name):
     output_name = file_name.partition('.')[0] + '.tab'
     results = load_results(file_name)
     flat = [flatten_dict(row) for row in results]
+    flat = tmp_clean_data(flat)
     column_names = get_column_names(flat)
     column_names = sort_column_names(column_names)
     tab_results = tablib.Dataset(headers=column_names)
