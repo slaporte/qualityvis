@@ -49,7 +49,7 @@ class LoupeDashboard(Bottle):
         self.fetch_failures = louper.fetch_failures
         self.start_time = time.time()
         self.tpool = None
-        self.toolserver_uptime = self.get_toolserver_uptime()
+
         self.start_time = kwargs.get('start_time') or time.time()
         self.start_cmd = kwargs.get('start_cmd') or ' '.join(sys.argv)
         self.host_machine = kwargs.get('hostname') or socket.gethostname()
@@ -57,6 +57,7 @@ class LoupeDashboard(Bottle):
         if self.open_toolserver_queries > 0:
             print '\nNote: there are', self.open_toolserver_queries, 'open queries on toolserver\n'
         self.send_toolserver_log('start', start_time=self.start_time)
+        self.toolserver_uptime = self.get_toolserver_uptime()
         self.route('/', callback=self.render_dashboard, template='dashboard')
         self.route('/summary', callback=self.get_summary_dict, template='summary')
         self.route('/all_results', callback=self.get_all_results)
@@ -143,6 +144,7 @@ class LoupeDashboard(Bottle):
         return template('dashboard', self.render_dashboard(final=True))
 
     def get_toolserver_uptime(self):
+        res = {}
         try:
             res = wapiti.get_json('http://toolserver.org/~slaporte/rs/uptime')
             res['open_queries'] = self.open_toolserver_queries
@@ -151,11 +153,12 @@ class LoupeDashboard(Bottle):
         return res
 
     def get_toolserver_openlog(self):
+        res = {}
         try:
             res = wapiti.get_json('http://toolserver.org/~slaporte/rs/openlog')
         except Exception as e:
             print 'Error getting toolserver stats:', e
-        return res['openlog']
+        return res.get('openlog', 0)
 
     def send_toolserver_log(self, action, start_time=0):
         params = {'action': action, 'hostname': self.host_machine, 'params': self.start_cmd, 'start_time': start_time}

@@ -143,8 +143,8 @@ class ArticleHistory(Input):
 
     def process(self, f_res):
         ah_text = find_article_history(f_res)
-        assessment_list = find_rating(f_res, rating_type='assessment')
-        importance_list = find_rating(f_res, rating_type='importance')
+        assessment_list = find_rating(f_res, rating_type='assessment') or []
+        importance_list = find_rating(f_res, rating_type='importance') or []
         if ah_text:
             tmpl_dict = tmpl_text_to_odict(ah_text)
             actions = parse_article_history(tmpl_dict)
