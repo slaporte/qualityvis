@@ -179,9 +179,10 @@ def clean_missing_data(data, attr_threshold=0.06):
 
 
 def purge_uniform_features(data, limit=2):
+    feat_names = [x.name for x in data.domain.features]
     feat_vals = dict([(x.name, set()) for x in data.domain.features])
     good_feats = set()
-    for i, feat_name in enumerate(feat_vals):
+    for i, feat_name in enumerate(feat_names):
         for inst in data:
             if feat_name in good_feats:
                 continue
