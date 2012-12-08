@@ -144,7 +144,7 @@ class LoupeDashboard(Bottle):
 
     def get_toolserver_uptime(self):
         try:
-            res = wapiti.get_json('http://ortelius.toolserver.org:8089/uptime')
+            res = wapiti.get_json('http://toolserver.org/~slaporte/rs/uptime')
             res['open_queries'] = self.open_toolserver_queries
         except Exception as e:
             print 'Error getting toolserver stats:', e
@@ -152,7 +152,7 @@ class LoupeDashboard(Bottle):
 
     def get_toolserver_openlog(self):
         try:
-            res = wapiti.get_json('http://ortelius.toolserver.org:8089/openlog')
+            res = wapiti.get_json('http://toolserver.org/~slaporte/rs/openlog')
         except Exception as e:
             print 'Error getting toolserver stats:', e
         return res['openlog']
@@ -160,7 +160,7 @@ class LoupeDashboard(Bottle):
     def send_toolserver_log(self, action, start_time=0):
         params = {'action': action, 'hostname': self.host_machine, 'params': self.start_cmd, 'start_time': start_time}
         try:
-            wapiti.get_url('http://ortelius.toolserver.org:8089/writelog/', params=params)
+            wapiti.get_url('http://toolserver.org/~slaporte/rs/writelog/', params=params)
         except Exception as e:
             print 'Error logging:', e
 
