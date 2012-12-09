@@ -10,6 +10,8 @@ import codecs
 from collections import OrderedDict, defaultdict
 import json
 import wapiti
+from dashboard import LoupeDashboard
+from inputs import DEFAULT_INPUTS, DOM, Revisions
 
 DEFAULT_CAT = "Featured articles that have appeared on the main page"
 DEFAULT_LIMIT = 100
@@ -18,13 +20,11 @@ DEFAULT_PER_CALL = 1  # TODO: make a configurable dictionary of chunk sizes
 DEFAULT_TIMEOUT = 30
 ALL = 20000
 
-from inputs import DEFAULT_INPUTS, DOM, Revisions
-from dashboard import LoupeDashboard
-
-DEFAULT_LIMITS = {  # Backlinks: 100,
-            # FeedbackV4: 100,
-          DOM: 40,
-          Revisions: 20}
+DEFAULT_LIMITS = {
+    # Backlinks: 100,
+    # FeedbackV4: 100,
+    DOM: 40,
+    Revisions: 20}
 
 
 def get_filename(prefix=''):
@@ -231,7 +231,6 @@ def parse_args():
                       help="get articles randomly")
     return parser.parse_args()
 
-from dashboard import LoupeDashboard
 
 def main():
     opts, args = parse_args()
