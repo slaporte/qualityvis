@@ -48,19 +48,22 @@ def section_stats(headers):
 def get_sections(pq):
     dist = {}
     depth = {}
-    total_words = 0
+    total_words = 0.0
+    weighted_total = 0.0
     headers = ['h2', 'h3', 'h4', 'h5', 'h6', 'h7']
     for header in headers:
         sec_stats = section_stats(pq(header))
         if sec_stats['header']['count'] > 0:
             dist[header] = sec_stats
-            words = sec_stats['text']['count'] * sec_stats['text']['mean']
+            words = (sec_stats['text']['count'] * sec_stats['text']['mean'])
             total_words += words
+            weighted_total += (float(header.strip('h')) * words)
             depth[header] = words
     if total_words > 0:
         for header in depth.keys():
             depth[header] = depth[header] / total_words
-    return {'dist': dist, 'depth': depth}
+        avg = (weighted_total / total_words)
+    return {'dist': dist, 'depth': depth, 'avg': avg}
 
 
 def element_words_dist(elem):

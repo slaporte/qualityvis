@@ -15,18 +15,18 @@ def find_rating(text, rating_type='assessment'):
     if not ratings:
         return None
     else:
-        return [rating[2].lower() for rating in ratings]
+        return [rating[2].strip(' \"\'').upper() for rating in ratings]
 
 
 def average_rating(project_ratings, rating_type='assessment'):
     if not project_ratings:
-        return 'no'
+        return 'NO'
     if rating_type == 'importance':
         # "Top", "High", "Mid", "Low" and "No"
-        ratings = ['no', 'low', 'mid', 'high', 'top']
+        ratings = ['NO', 'LOW', 'MID', 'HIGH', 'TOP']
     else:
         # "FA", "A", "B", "C", "Start", "Stub", "Dab", "Category", "Template", "Book", "Current", "Future", "Redirect", "Needed" and "No"
-        ratings = ['no', 'stub', 'start', 'c', 'b', 'a', 'ga', 'fa']
+        ratings = ['NO', 'STUB', 'START', 'C', 'B', 'A', 'GA', 'FA']
     score = 0
     for r in ratings:
         if project_ratings.count(r) > 0:
@@ -36,7 +36,7 @@ def average_rating(project_ratings, rating_type='assessment'):
 
 
 def find_article_history(text):
-    matches = re.findall(r'{{\s*ArticleHistory(.+currentstatus.+?)}}', text, re.DOTALL)
+    matches = re.findall(r'{{\s*Article[ hH]+istory(.+currentstatus.*?)}}', text, re.DOTALL)
     if not matches:
         return None
     else:
@@ -149,22 +149,33 @@ class ArticleHistory(Input):
             tmpl_dict = tmpl_text_to_odict(ah_text)
             actions = parse_article_history(tmpl_dict)
             ah = {'actions': actions,
-                  'current': tmpl_dict.get('currentstatus'),
-                  'topic': tmpl_dict.get('topic'),
+                  'current': tmpl_dict.get('currentstatus', 'NO').strip(' \"\'').upper(),
+                  'topic': tmpl_dict.get('topic').strip(' \"\'').capitalize(),
                   'itndate': parse_date(tmpl_dict.get('itndate')),
                   'dykdate': parse_date(tmpl_dict.get('dykdate')),
                   'maindate': parse_date(tmpl_dict.get('maindate')),
                   'assessment': average_rating(assessment_list, rating_type='assessment'),
                   'assessment_count': len(assessment_list),
+                  'assessment_list': assessment_list,
                   'importance': average_rating(importance_list, rating_type='importance'),
                   'importance_count': len(importance_list),
+                  'importance_list': importance_list,
                   }
             if actions:
                 ah['oldest_action_age'] = age_secs(actions[0].date)
                 ah['latest_action_age'] = age_secs(actions[-1].date)
             return super(ArticleHistory, self).process(ah)
         else:
-            return super(ArticleHistory, self).process({'actions': []})
+            return super(ArticleHistory, self).process(
+                { 'actions': [],
+                  'current': 'NO',
+                  'assessment': average_rating(assessment_list, rating_type='assessment'),
+                  'assessment_count': len(assessment_list),
+                  'assessment_list': assessment_list,
+                  'importance': average_rating(importance_list, rating_type='importance'),
+                  'importance_count': len(importance_list),
+                  'importance_list': importance_list,
+                })
 
     stats = {
         'article_history': lambda f: len(f.get('actions')),
@@ -178,6 +189,8 @@ class ArticleHistory(Input):
         'actions': lambda f: [{'type': action.type, 'result': action.result, 'date': str(action.date)} for action in f.get('actions')],
         'assessment_average': lambda f: f['assessment'],
         'assessment_count': lambda f: f['assessment_count'],
+        'assessment_list': lambda f: f['assessment_list'],
         'importance_average': lambda f: f['importance'],
-        'importance_count': lambda f: f['importance_count']
+        'importance_count': lambda f: f['importance_count'],
+        'importance_list': lambda f: f['importance_list']
     }
