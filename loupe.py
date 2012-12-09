@@ -10,6 +10,8 @@ import codecs
 from collections import OrderedDict, defaultdict
 import json
 import wapiti
+from dashboard import LoupeDashboard
+from inputs import DEFAULT_INPUTS, DOM, Revisions
 
 DEFAULT_CAT = "Featured articles that have appeared on the main page"
 DEFAULT_LIMIT = 100
@@ -18,13 +20,11 @@ DEFAULT_PER_CALL = 1  # TODO: make a configurable dictionary of chunk sizes
 DEFAULT_TIMEOUT = 30
 ALL = 20000
 
-from inputs import DEFAULT_INPUTS, DOM, Revisions
-from dashboard import LoupeDashboard
-
-DEFAULT_LIMITS = {  # Backlinks: 100,
-            # FeedbackV4: 100,
-          DOM: 40,
-          Revisions: 20}
+DEFAULT_LIMITS = {
+    # Backlinks: 100,
+    # FeedbackV4: 100,
+    DOM: 40,
+    Revisions: 20}
 
 
 def get_filename(prefix=''):
@@ -150,7 +150,7 @@ class Louper(object):
         self.fetch_failures = defaultdict(list)
         self.input_pool = FancyInputPool(self.limits)
         self.loupe_pool = gevent.pool.Pool(self.concurrency)
-        
+
     def run(self):
         print 'Creating Loupes for', len(self.page_ds), 'articles...'
         create_i = 0
@@ -161,7 +161,7 @@ class Louper(object):
             al.link(self.on_loupe_complete)
             self.loupe_pool.start(al)
         self.loupe_pool.join()
-        
+
     def on_loupe_complete(self, loupe):
         self.results[loupe.title] = loupe.to_dict()
         msg_params = {'cr_i': loupe.create_i,
@@ -184,7 +184,7 @@ class Louper(object):
         output_dict['id'] = loupe.page_id
         output_dict['ns'] = loupe.page_ns
         output_dict['times'] = loupe.times
-        
+
         self.output_file.write(json.dumps(output_dict, default=str))
         self.output_file.write('\n')
 
@@ -194,7 +194,7 @@ class Louper(object):
     def close(self):
         # TODO:  might want to find a better way of doin this
         self.output_file.close()
-            
+
 
 def parse_args():
     parser = OptionParser()
@@ -231,7 +231,6 @@ def parse_args():
                       help="get articles randomly")
     return parser.parse_args()
 
-from dashboard import LoupeDashboard
 
 def main():
     opts, args = parse_args()
@@ -253,7 +252,7 @@ def main():
 
     res_filename = 'results/'+filename+'.json'
     report_filename = 'results/' + filename + '-report.html'
-    
+
     lpr = Louper(page_ds, filename=res_filename, inputs=DEFAULT_INPUTS, **kwargs)
 
     dash = LoupeDashboard(lpr)
