@@ -150,7 +150,7 @@ class ArticleHistory(Input):
             actions = parse_article_history(tmpl_dict)
             ah = {'actions': actions,
                   'current': tmpl_dict.get('currentstatus', 'NO').strip(' \"\'').upper(),
-                  'topic': tmpl_dict.get('topic').strip(' \"\'').capitalize(),
+                  'topic': tmpl_dict.get('topic', 'None').strip(' \"\'').capitalize(),
                   'itndate': parse_date(tmpl_dict.get('itndate')),
                   'dykdate': parse_date(tmpl_dict.get('dykdate')),
                   'maindate': parse_date(tmpl_dict.get('maindate')),
