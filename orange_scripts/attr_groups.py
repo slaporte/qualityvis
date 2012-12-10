@@ -30,6 +30,8 @@ structure = [
  'd_wikitable_word_mean_trimmed',
  'd_wikitable_word_std_dev',
  'd_word_count',
+ 'd_s_avg',
+ 'd_s_depth_h2'
 ]
 
 sectionalization = [
@@ -55,6 +57,29 @@ sectionalization = [
  'd_h4_text_mean_trimmed',
  'd_h4_text_std_dev',
  'd_word_count',
+ 'd_s_dist_h2_header_kurtosis',
+ 'd_s_dist_h2_header_kurtosis_trimmed',
+ 'd_s_dist_h2_header_mean',
+ 'd_s_dist_h2_header_mean_trimmed',
+ 'd_s_dist_h2_header_median',
+ 'd_s_dist_h2_header_median_abs_dev',
+ 'd_s_dist_h2_header_rel_std_dev',
+ 'd_s_dist_h2_header_skewness',
+ 'd_s_dist_h2_header_skewness_trimmed',
+ 'd_s_dist_h2_header_std_dev',
+ 'd_s_dist_h2_header_std_dev_trimmed',
+ 'd_s_dist_h2_text_count',
+ 'd_s_dist_h2_text_kurtosis',
+ 'd_s_dist_h2_text_kurtosis_trimmed',
+ 'd_s_dist_h2_text_mean',
+ 'd_s_dist_h2_text_mean_trimmed',
+ 'd_s_dist_h2_text_median',
+ 'd_s_dist_h2_text_median_abs_dev',
+ 'd_s_dist_h2_text_rel_std_dev',
+ 'd_s_dist_h2_text_skewness',
+ 'd_s_dist_h2_text_skewness_trimmed',
+ 'd_s_dist_h2_text_std_dev',
+ 'd_s_dist_h2_text_std_dev_trimmed'
  ]
 
 richness = [
