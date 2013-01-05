@@ -28,6 +28,8 @@ meta_features = {'title': META_STR,
                  'ah_topic': META_DISCRETE,
                  'ah_actions': META_STR,
                  'ah_assessment': META_DISCRETE,
+                 'ah_assessment_list': META_STR,
+                 'ah_importance_list': META_STR,
                  'ah_current': CLASS
                 }
 DEFAULT_COLUMNS = export_settings.COLUMNS
@@ -80,7 +82,8 @@ def get_column_types(dataset, count=200):
             value_set = set(value_list) - set([''])
             # Orange handles empty string as a missing value
         except Exception as e:
-            import pdb;pdb.set_trace()
+            #import pdb;pdb.set_trace()
+            print 'Encountered exception', e, 'while processing', header
         try:
             [float(f) for f in value_set]
         except:
@@ -148,7 +151,7 @@ def results_to_tsv(file_name):
     column_types = get_column_types(tab_results)
     tab_results.insert(1, [c.f_type for c in ordered_yield(column_types, column_names, IGNORE)])
     tab_results.insert(2, [c.flag for c in ordered_yield(column_types, column_names, IGNORE)])
-    import pdb;pdb.set_trace()
+    #import pdb;pdb.set_trace()
     with codecs.open(output_name, 'w', 'utf-8') as output:
         for row in tab_results:
             output.write('\t'.join([unicode(v) for v in row]))
