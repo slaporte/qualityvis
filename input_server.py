@@ -33,6 +33,8 @@ AVAIL_INPUTS.pop('Input', None)
 @route('/<input_name>/<page_title>/')
 @route('/<input_name>/<page_title>/<page_id:int>')
 def do_input(input_name, page_title='', page_id=None):
+    if not page_title:
+        page_title = request.query.title
     in_type = AVAIL_INPUTS.get(input_name.lower())
     page_title = request.query.title or page_title
     page_id = request.query.page_id or page_id
