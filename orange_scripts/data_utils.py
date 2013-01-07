@@ -106,6 +106,44 @@ def cast_domain(in_domain,
     return new_domain
 
 
+def merge_domains(domain_list, keep_metas=True):
+    if not domain_list:
+        raise ValueError('expected a list of at least one valid domain')
+    if len(domain_list) == 1:
+        return domain_list[0]
+    class_var = domain_list[0].class_var
+    all_vars = set()
+    all_meta_vars = set()
+    for dom in domain_list:
+        all_vars |= set(dom.variables)
+        all_meta_vars |= set(dom.getmetas().items())
+        if not dom.class_var == class_var:
+            raise ValueError('conflicting class variables detected')
+    if len(all_vars) > len(set([v.name for v in all_vars])):
+        raise Exception('matching names, conflicting types '
+                        'build handling behavior if you see this.')
+    all_vars = all_vars - set([class_var])
+    sorted_vars = list(sorted(all_vars, key=lambda x: x.name))
+    new_dom = Orange.data.Domain(sorted_vars, class_var)
+    if keep_metas:
+        #if len(all_meta_vars) > len([x[0] for x in all_meta_vars]):
+        #    raise Exception
+        new_dom.addmetas(dict(all_meta_vars))  # this could well blow up
+    return new_dom
+
+
+def concatenate_tables(table_list):
+    if not table_list:
+        raise ValueError('expected at least one table')
+    if len(table_list) == 1:
+        return table_list[0]
+    domains = [t.domain for t in table_list]
+    merged_domain = merge_domains(domains)
+    instances = list(itertools.chain.from_iterable(table_list))
+    new_table = Orange.data.Table(merged_domain, instances)
+    return new_table
+
+
 def get_table_attr_names(in_table, incl_metas=True):
     # TODO: multiclass vars (in_table.domain.class_vars
     try:
