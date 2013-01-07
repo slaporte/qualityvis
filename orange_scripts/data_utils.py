@@ -202,3 +202,12 @@ def get_random_subtable(data, count=None):
         count = min(len(data), count)
     random_indices = random.sample(range(len(data)), count)
     return data.get_items(random_indices)
+
+
+def load_table(filename):
+    return Orange.data.Table(filename)
+
+
+def save_table(filename, table):
+    from orange import saveTabDelimited
+    return saveTabDelimited(filename, table)
