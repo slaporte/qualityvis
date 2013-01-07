@@ -46,7 +46,7 @@ def decorrelate_data(input_file, corr_min=DEFAULT_CORR_MIN, corr_max=DEFAULT_COR
         in_subtable = out_data
     data_distances = compute_attr_dist_matrix(in_subtable)
     kept, dropped = get_redundant_attrs(data_distances, corr_lower=corr_min, corr_upper=corr_max)
-    out_data = cast_table(in_data, attr_selector=kept)
+    out_data = cast_table(out_data, attr_selector=kept)
     #out_subtable = get_random_subtable(out_data, DEFAULT_SUBTABLE_LEN)
     #compute_attr_dist_matrix(out_subtable)
     save_table(out_file, out_data)
@@ -60,6 +60,7 @@ def main():
     in_data, out_data = decorrelate_data(**kwargs)
     print len(in_data) - len(out_data), ' rows removed'
     print len(in_data.domain) - len(out_data.domain), ' attributes removed'
+
 
 if __name__ == '__main__':
     main()
