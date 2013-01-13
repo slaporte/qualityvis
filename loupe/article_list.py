@@ -264,7 +264,7 @@ def create_parser(root_parser=None):
                                help='name of the list or list file')
     parser_create.set_defaults(func=create)
 
-    op_parser = ArgumentParser(description='parsers generic search op args.',
+    op_parser = ArgumentParser(description='parses generic search op args.',
                                add_help=False)
     op_parser.add_argument('search_target',
                            help='article, category, or template')
@@ -297,8 +297,7 @@ def needs_alm(f):
         if not os.path.isdir(list_home):
             raise IOError('not a directory: ' + str(list_home))
         alm = ArticleListManager(search_path=[list_home])
-        if not kw.get('alm'):
-            kw['alm'] = alm
+        kw['alm'] = alm
         return f(*a, **kw)
     return decorated
 
