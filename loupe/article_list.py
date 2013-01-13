@@ -245,47 +245,6 @@ def al_parse(contents):
     return ret_actions, comments, file_metadata
 
 
-def create_parser(root_parser=None):
-    if root_parser is None:
-        root_parser = ArgumentParser(description='article list operations')
-        subparsers = root_parser.add_subparsers()
-    else:
-        list_parser = root_parser.add_subparsers().add_parser('list')
-        subparsers = list_parser.add_subparsers()
-    root_parser.add_argument('--list_home', help='list lookup directory')
-
-    parser_show = subparsers.add_parser('show')
-    parser_show.add_argument('target_list', nargs='?',
-                             help='Name of the list or list file')
-    parser_show.set_defaults(func=show)
-
-    parser_create = subparsers.add_parser('create')
-    parser_create.add_argument('target_list',
-                               help='name of the list or list file')
-    parser_create.set_defaults(func=create)
-
-    op_parser = ArgumentParser(description='parses generic search op args.',
-                               add_help=False)
-    op_parser.add_argument('search_target',
-                           help='article, category, or template')
-    op_parser.add_argument('target_list',
-                           help='name or path of article list')
-    op_parser.add_argument('--limit', '-l', type=int,
-                           default=DEFAULT_LIMIT,
-                           help='number of articles')
-    op_parser.add_argument('--recursive', '-R', action='store_true',
-                           help='Fetch recursively')
-    op_parser.set_defaults(func=list_op)
-
-    parser_include = subparsers.add_parser('include', parents=[op_parser])
-    parser_include.set_defaults(op_name='include')
-
-    parser_exclude = subparsers.add_parser('exclude', parents=[op_parser])
-    parser_exclude.set_defaults(op_name='exclude')
-
-    return root_parser
-
-
 def needs_alm(f):
     # currently depends on keyword arguments to work
     @wraps(f)
@@ -310,6 +269,7 @@ def show(alm, target_list=None, **kw):
         print json.dumps(a_list.file_metadata, indent=4)
         print '\nTotal articles: ', len(a_list.get_articles()), '\n'
     elif target_list is None:
+        print 'Article lists in ', repr(alm.search_path)
         print '\n'.join(alm.get_full_list())
 
 
@@ -346,6 +306,46 @@ def list_op(alm, op_name, search_target, target_list, limit=DEFAULT_LIMIT, recur
     # TODO: summary
     # TODO: tests
     # TODO: convert this function to a decorator thing
+
+
+def create_parser():
+    root_parser = ArgumentParser(description='article list operations')
+    root_parser.add_argument('--list_home', help='list lookup directory')
+    add_subparsers(root_parser.add_subparsers())
+    return root_parser
+
+
+def add_subparsers(subparsers):
+    parser_show = subparsers.add_parser('show')
+    parser_show.add_argument('target_list', nargs='?',
+                             help='Name of the list or list file')
+    parser_show.set_defaults(func=show)
+
+    parser_create = subparsers.add_parser('create')
+    parser_create.add_argument('target_list',
+                               help='name of the list or list file')
+    parser_create.set_defaults(func=create)
+
+    op_parser = ArgumentParser(description='parses generic search op args.',
+                               add_help=False)
+    op_parser.add_argument('search_target',
+                           help='article, category, or template')
+    op_parser.add_argument('target_list',
+                           help='name or path of article list')
+    op_parser.add_argument('--limit', '-l', type=int,
+                           default=DEFAULT_LIMIT,
+                           help='number of articles')
+    op_parser.add_argument('--recursive', '-R', action='store_true',
+                           help='Fetch recursively')
+    op_parser.set_defaults(func=list_op)
+
+    parser_include = subparsers.add_parser('include', parents=[op_parser])
+    parser_include.set_defaults(op_name='include')
+
+    parser_exclude = subparsers.add_parser('exclude', parents=[op_parser])
+    parser_exclude.set_defaults(op_name='exclude')
+
+    return
 
 
 def main():
