@@ -1,7 +1,6 @@
 from __future__ import unicode_literals
 import json
 import codecs
-#import tablib
 from itertools import chain
 from optparse import OptionParser
 from collections import namedtuple
