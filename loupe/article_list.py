@@ -1,32 +1,63 @@
 from __future__ import unicode_literals
-import codecs
+
 import os
-import argparse
-import wapiti
 import json
+import codecs
+from functools import wraps
 from datetime import datetime
-
 from collections import namedtuple
+from argparse import ArgumentParser
 
-DEFAULT_EXT = '.txt'
+from lib import wapiti
+
+DEFAULT_LIMIT = 100
 DEFAULT_SOURCE = 'enwiki'
-DATE_FORMAT = '%Y-%m-%dT%H:%M:%S'
-DEFAULT_FETCH_LIMIT = 100
 FORMAT = 'v1'
 
+###########
+DATE_FORMAT = '%Y-%m-%dT%H:%M:%S'
+DEFAULT_EXT = '.txt'
 
 ArticleIdentifier = namedtuple('ArticleIdentifier', 'name source')
+
 
 class ArticleListManager(object):
     def __init__(self, search_path=None):
         if search_path is None:
-            search_path = [os.getcwd()]
+            default_path = os.getenv('ARTICLE_LIST_HOME') or os.getcwd()
+            search_path = [default_path]
         self.search_path = search_path
+        self._output_path = None
 
     def lookup(self, filename):
-        #look up first filename in self.search_path
-        #return path
-        pass
+        if not filename:
+            return None
+        for search_dir in self.search_path:
+            if os.path.isdir(search_dir):
+                if os.path.isfile(filename):
+                    return os.path.join(search_dir, filename)
+                elif os.path.isfile(filename + DEFAULT_EXT):
+                    return os.path.join(search_dir, filename + DEFAULT_EXT)
+        if os.path.isfile(filename):
+            return filename
+        return None
+
+    def get_full_list(self):
+        ret = []
+        for search_dir in self.search_path:
+            try:
+                ret.extend([fn for fn in os.listdir(search_dir)
+                            if fn.endswith(DEFAULT_EXT)])
+            except IOError:
+                pass
+        return ret
+
+    @property
+    def output_path(self):
+        if self._output_path:
+            return self._output_path
+        else:
+            return self.search_path[0]
 
 
 class ArticleList(object):
@@ -39,9 +70,8 @@ class ArticleList(object):
 
     @classmethod
     def from_file(cls, path):
-        with codecs.open(path, encoding='utf-8') as f:
+        with codecs.open(path, 'r', encoding='utf-8') as f:
             f_contents = f.read()
-
         return cls.from_string(f_contents)
 
     @classmethod
@@ -57,7 +87,7 @@ class ArticleList(object):
     def file_metadata_string(self):
         date = datetime.utcnow()
         created = self.file_metadata.get('created',
-                    datetime.strftime(date, DATE_FORMAT))
+                                         datetime.strftime(date, DATE_FORMAT))
         name = self.file_metadata.get('name', '(unknown)')
         format = self.file_metadata.get('format', FORMAT)
         tmpl = '# created={created} name={name} format={format}'
@@ -113,12 +143,10 @@ class ArticleList(object):
                 ai += 1
         return '\n'.join(ret)
 
-
     def write(self, path):
         output = self.to_string()
         with codecs.open(path, 'w', encoding='utf-8') as f:
             f.write(output)
-
 
 
 class ListAction(object):
@@ -143,8 +171,8 @@ class ListAction(object):
         self.articles = articles
 
     @classmethod
-    def from_meta_string(cls, string, default_id=1, default_action='include', defaults=True):
-        metadata = parse_meta_string(string=string)
+    def from_meta_string(cls, string, default_id=1, default_action='include'):
+        metadata = parse_meta_string(string)
         extra_attrs = {}
         kw = {}
         for k in metadata:
@@ -154,11 +182,11 @@ class ListAction(object):
                 extra_attrs[k] = metadata[k]
         if not kw:
             raise ValueError('no metadata found')
-        if not kw.get('id') and defaults:
+        if not kw.get('id'):
             kw['id'] = default_id
-        if not kw.get('action') and defaults:
+        if not kw.get('action'):
             kw['action'] = default_action
-        if kw['action'] not in cls.valid_actions and defaults:
+        if kw['action'] not in cls.valid_actions:
             raise ValueError('unrecognized action: ' + str(kw['action']))
         kw['extra_attrs'] = extra_attrs
         return cls(**kw)
@@ -173,14 +201,15 @@ class ListAction(object):
         return ret
 
 
-def parse_meta_string(string):
+def parse_meta_string(string_orig):
     ret = {}
-    string = string.strip().lstrip('#').strip()
+    string = string_orig.strip().lstrip('#').strip()
     parts = string.split()
     for part in parts:
         k, _, v = part.partition('=')
         ret[k] = v
     return ret
+
 
 def al_parse(contents):
     lines = contents.splitlines()
@@ -195,7 +224,8 @@ def al_parse(contents):
             continue
         if line.startswith("#"):
             try:
-                list_action = ListAction.from_meta_string(line)
+                list_action = ListAction.from_meta_string(line,
+                                                          default_id=len(ret_actions)+1)
             except ValueError:
                 if not ret_actions:
                     try:
@@ -215,105 +245,116 @@ def al_parse(contents):
     return ret_actions, comments, file_metadata
 
 
-def create_parser(parent=None):
-    if parent is None:
-        parser = argparse.ArgumentParser(description='alias mission control center')
+def create_parser(root_parser=None):
+    if root_parser is None:
+        root_parser = ArgumentParser(description='article list operations')
+        subparsers = root_parser.add_subparsers()
     else:
-        parser = parent.add_subparsers(title='list')
-    parser.add_argument('--list_home', help='Lookup directory')
+        list_parser = root_parser.add_subparsers().add_parser('list')
+        subparsers = list_parser.add_subparsers()
+    root_parser.add_argument('--list_home', help='list lookup directory')
 
-    subparsers = parser.add_subparsers()
     parser_show = subparsers.add_parser('show')
-    parser_show.add_argument('target_list', help='Name of the list or list file', nargs='?')
+    parser_show.add_argument('target_list', nargs='?',
+                             help='Name of the list or list file')
     parser_show.set_defaults(func=show)
 
     parser_create = subparsers.add_parser('create')
-    parser_create.add_argument('target_list', help='Name of the list or list file')
+    parser_create.add_argument('target_list',
+                               help='name of the list or list file')
     parser_create.set_defaults(func=create)
 
-    parser_include = subparsers.add_parser('include')
-    parser_include.add_argument('search_target', help='Article, category, or template')
-    parser_include.add_argument('target_list', help='Name of the list or list file')
-    parser_include.add_argument('--limit', '-l', type=int, help='Number of articles', default=DEFAULT_FETCH_LIMIT)
-    parser_include.add_argument('--recursive', '-R', help='Fetch recursively', default=True)
-    parser_include.set_defaults(func=include)
+    op_parser = ArgumentParser(description='parsers generic search op args.',
+                               add_help=False)
+    op_parser.add_argument('search_target',
+                           help='article, category, or template')
+    op_parser.add_argument('target_list',
+                           help='name or path of article list')
+    op_parser.add_argument('--limit', '-l', type=int,
+                           default=DEFAULT_LIMIT,
+                           help='number of articles')
+    op_parser.add_argument('--recursive', '-R', action='store_true',
+                           help='Fetch recursively')
+    op_parser.set_defaults(func=list_op)
 
-    parser_exclude = subparsers.add_parser('exclude')
-    parser_exclude.add_argument('search_target', help='Article, category, or template')
-    parser_exclude.add_argument('target_list', help='Name of the list or list file')
-    parser_exclude.add_argument('--limit', '-l', type=int, help='Number of articles', default=DEFAULT_FETCH_LIMIT)
-    parser_exclude.add_argument('--recursive', '-R', help='Fetch recursively', default=True)
-    parser_exclude.set_defaults(func=exclude)
+    parser_include = subparsers.add_parser('include', parents=[op_parser])
+    parser_include.set_defaults(op_name='include')
 
-    return parser
+    parser_exclude = subparsers.add_parser('exclude', parents=[op_parser])
+    parser_exclude.set_defaults(op_name='exclude')
+
+    return root_parser
 
 
-def show(path):
-    if os.path.isdir(path):
-        print '\n'.join([os.listdir(path)])
-    elif os.path.isfile(path):
-        a_list = ArticleList.from_file(path)
+def needs_alm(f):
+    # currently depends on keyword arguments to work
+    @wraps(f)
+    def decorated(alm=None, *a, **kw):
+        if alm is not None:
+            return f(alm=alm, *a, **kw)
+        list_home = kw.get('list_home')
+        list_home = list_home or os.getenv('ARTICLE_LIST_HOME') or os.getcwd()
+        if not os.path.isdir(list_home):
+            raise IOError('not a directory: ' + str(list_home))
+        alm = ArticleListManager(search_path=[list_home])
+        if not kw.get('alm'):
+            kw['alm'] = alm
+        return f(*a, **kw)
+    return decorated
+
+
+@needs_alm
+def show(alm, target_list=None, **kw):
+    target_list_path = alm.lookup(target_list)
+    if target_list_path:
+        a_list = ArticleList.from_file(target_list_path)
         print json.dumps(a_list.file_metadata, indent=4)
         print '\nTotal articles: ', len(a_list.get_articles()), '\n'
-        import pdb; pdb.set_trace()
+    elif target_list is None:
+        print '\n'.join(alm.get_full_list())
 
 
-def create(list_name, list_home):
-    # create empty list
-    pass
+@needs_alm
+def create(alm, target_list, **kw):
+    existent = alm.lookup(target_list)
+    if existent:
+        raise IOError('list already exists: %s' % target_list)
+    if not target_list or '.' in target_list:
+        raise ValueError('expected non-empty string without dots')
+
+    out_filename = os.path.join(alm.output_path, target_list + DEFAULT_EXT)
+    codecs.open(out_filename, 'w', encoding='utf-8').close()
+    print 'Created article list %s' % out_filename
 
 
-def include(**kw):
-    pass
+@needs_alm
+def list_op(alm, op_name, search_target, target_list, limit=DEFAULT_LIMIT, recursive=False, **kw):
+    target_list_path = alm.lookup(target_list)
+    if not target_list_path:
+        raise IOError('file not found for target list: %s' % target_list)
+    a_list = ArticleList.from_file(target_list_path)
+    if search_target.startswith('Category:'):
+        article_list = wapiti.get_category_recursive(search_target, count=limit, to_zero_ns=True)
+    elif search_target.startswith('Template:'):
+        article_list = wapiti.get_transcluded(page_title=search_target, limit=limit, to_zero_ns=True)
+
+    if op_name == 'include':
+        a_list.include([a[2] for a in article_list], source=DEFAULT_SOURCE, term=search_target)
+        a_list.write(target_list_path)
+    elif op_name == 'exclude':
+        a_list.exclude([a[2] for a in article_list], source=DEFAULT_SOURCE, term=search_target)
+        a_list.write(target_list_path)
+    # TODO: summary
+    # TODO: tests
+    # TODO: convert this function to a decorator thing
 
 
-def exclude(**kw):
-    pass
-
-
-def main(func, list_home=None, target_list=None, search_target=None, limit=DEFAULT_FETCH_LIMIT, **kw):
-    list_home = list_home or os.getcwd()
-    if not os.path.isdir(list_home):
-        raise IOError('not a directory: ' + str(list_home))
-    if target_list:
-        if os.path.isfile(target_list):
-            target_list_path = target_list
-        else:
-            alm = ArticleListManager(search_path=[list_home])
-            target_list_path = alm.lookup(target_list)
-    else:
-        target_list_path = None
-    if func is show:
-        path = target_list_path or list_home
-        show(path)
-    elif func is create:
-        outfile = list_home + '/' + target_list + DEFAULT_EXT
-        if not target_list:
-            raise IOError('not a valid filename: %s' % target_list)
-        if target_list_path:
-            raise IOError('list already exists: %s' % target_list_path)
-        codecs.open(outfile, 'w', encoding='utf-8').close()
-        print 'Created article list %s' % outfile
-    else:
-        outfile = list_home + '/' + target_list + DEFAULT_EXT
-        if not target_list_path:
-            raise IOError('file not found for target list: %s' % target_list)
-        a_list = ArticleList.from_file(outfile)
-        if search_target.startswith('Category:'):
-            article_list = wapiti.get_category_recursive(search_target, count=limit, to_zero_ns=True)
-        elif search_target.startswith('Template:'):
-            article_list = wapiti.get_transcluded(page_title=search_target, limit=limit, to_zero_ns=True)
-        if func is include:
-            a_list.include([a[2] for a in article_list], source=DEFAULT_SOURCE, term=search_target)
-            a_list.write(outfile)
-        if func is exclude:
-            a_list.exclude([a[2] for a in article_list], source=DEFAULT_SOURCE, term=search_target)
-            a_list.write(outfile)
-        import pdb; pdb.set_trace()
-
-
-if __name__ == '__main__':
+def main():
     parser = create_parser()
     args = parser.parse_args()
     kwargs = dict(args._get_kwargs())
-    main(**kwargs)
+    args.func(**kwargs)
+
+
+if __name__ == '__main__':
+    main()
