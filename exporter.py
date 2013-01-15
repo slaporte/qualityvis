@@ -141,7 +141,7 @@ def results_to_tsv(file_name):
     output_name = file_name.partition('.')[0] + '.tab'
     results = load_results(file_name)
     flat = [flatten_dict(row) for row in results]
-    flat = tmp_clean_data(flat)
+    #flat = tmp_clean_data(flat)
     column_names = get_column_names(flat)
     column_names = sort_column_names(column_names)
 

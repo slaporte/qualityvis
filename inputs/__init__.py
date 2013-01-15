@@ -16,4 +16,4 @@ from watchers import Watchers
 from article_history import ArticleHistory
 from protection import Protection
 
-DEFAULT_INPUTS = [Backlinks, LangLinks, InterWikiLinks, FeedbackV4, FeedbackV5, DOM, GoogleNews, GoogleSearch, PageViews, Revisions, Watchers, Protection, ArticleHistory]
+DEFAULT_INPUTS = [DOM, ArticleHistory, Protection]

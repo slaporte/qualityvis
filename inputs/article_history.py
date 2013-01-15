@@ -45,6 +45,14 @@ def find_article_history(text):
         return matches[0].strip().strip('|')  # get rid of excess whitespace and pipes
 
 
+def find_wikiprojects(text):
+    matches = re.findall(r'{{\s*WikiProject (.*?)(\||}})', text, re.DOTALL)
+    if not matches:
+        return None
+    else:
+        return [m[0] for m in matches]
+
+
 def tmpl_text_to_odict(text):
     ret = OrderedDict()
     pairs = text.split('|')
@@ -142,6 +150,7 @@ class ArticleHistory(Input):
         return wapiti.get_talk_page(self.page_title)
 
     def process(self, f_res):
+        projects = find_wikiprojects(f_res)
         ah_text = find_article_history(f_res)
         assessment_list = find_rating(f_res, rating_type='assessment') or []
         importance_list = find_rating(f_res, rating_type='importance') or []
@@ -160,6 +169,7 @@ class ArticleHistory(Input):
                   'importance': average_rating(importance_list, rating_type='importance'),
                   'importance_count': len(importance_list),
                   'importance_list': importance_list,
+                  'projects': projects
                   }
             if actions:
                 ah['oldest_action_age'] = age_secs(actions[0].date)
@@ -175,22 +185,16 @@ class ArticleHistory(Input):
                   'importance': average_rating(importance_list, rating_type='importance'),
                   'importance_count': len(importance_list),
                   'importance_list': importance_list,
+                  'projects': projects
                 })
 
     stats = {
-        'article_history': lambda f: len(f.get('actions')),
-        'oldest_action_age': lambda f: f.get('oldest_action_age', 0),
-        'latest_action_age': lambda f: f.get('latest_action_age', 0),
-        'mainpage_age': lambda f: age_secs(f.get('maindate')),
-        'dyk_age': lambda f: age_secs(f.get('dykdate')),
-        'itn_age': lambda f: age_secs(f.get('itndate')),
         'topic': lambda f: f.get('topic', ''),
         'current': lambda f: f.get('current', ''),
-        'actions': lambda f: [{'type': action.type, 'result': action.result, 'date': str(action.date)} for action in f.get('actions')],
+        'MILHIST': lambda f: True if len([a.link for a in f.get('actions') if 'WikiProject Military history' in a.link]) else False,
+        'projects': lambda f: [action.link.replace('Wikipedia:', '').split('/', 1)[0] for action in f.get('actions')],
+        'other_projects': lambda f: f['projects'],
         'assessment_average': lambda f: f['assessment'],
         'assessment_count': lambda f: f['assessment_count'],
         'assessment_list': lambda f: f['assessment_list'],
-        'importance_average': lambda f: f['importance'],
-        'importance_count': lambda f: f['importance_count'],
-        'importance_list': lambda f: f['importance_list']
     }
