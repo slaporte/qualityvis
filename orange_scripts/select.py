@@ -1,12 +1,3 @@
-
-# select.py --protection-level pr_any --classes A,GA,FA [--keep-discrete] [--attrfile attrnames.txt] --output outputfile.tab file1.tab file2.tab
-
-'''
-    Select by protection-level
-    Select by classes
-
-'''
-
 import argparse
 from data_utils import (cast_table,
                         get_random_subtable,
@@ -18,7 +9,8 @@ from json import dumps
 
 DEFAULT_PROTECTION_LEVEL = 'pr_any'
 DEFAULT_CLASSES = ['GA', 'FA']
-DEFAULT_CLASS_VAR = 'ah_current' # ah_assessment_average
+DEFAULT_CLASS_VAR = 'ah_current'  # ah_assessment_average
+
 
 def json_print(data):
     return dumps(data, skipkeys=True, indent=2, sort_keys=True)
