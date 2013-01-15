@@ -1,6 +1,6 @@
 from base import Input
 from collections import namedtuple
-import wapiti
+from lib import wapiti
 import datetime
 
 

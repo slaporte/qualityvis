@@ -1,4 +1,4 @@
-import wapiti
+from lib import wapiti
 import re
 import copy
 from base import Input

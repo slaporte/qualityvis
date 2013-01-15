@@ -1,5 +1,5 @@
 from base import Input
-from wapiti import get_json
+from lib.wapiti import get_json
 from stats import dist_stats
 from datetime import datetime, timedelta, date
 from math import ceil

@@ -2,16 +2,17 @@ import gevent
 from gevent import monkey
 monkey.patch_all()
 from gevent.greenlet import Greenlet
-
-from optparse import OptionParser
+import article_list
+from argparse import ArgumentParser
 import logging
 import time
 import codecs
 from collections import OrderedDict, defaultdict
 import json
-import wapiti
+from lib import wapiti
 from dashboard import LoupeDashboard
 from inputs import DEFAULT_INPUTS, DOM, Revisions
+import os
 
 DEFAULT_CAT = "Featured articles that have appeared on the main page"
 DEFAULT_LIMIT = 100
@@ -195,7 +196,7 @@ class Louper(object):
         # TODO:  might want to find a better way of doin this
         self.output_file.close()
 
-
+'''
 def parse_args():
     parser = OptionParser()
     parser.add_option("-l", "--limit", dest="limit",
@@ -230,8 +231,90 @@ def parse_args():
                       action="store_true", default=False,
                       help="get articles randomly")
     return parser.parse_args()
+'''
+
+def create_parser():
+    root_parser = ArgumentParser(description='article fetch operations')
+    root_parser.add_argument('--list_home', help='list lookup directory')
+    add_subparsers(root_parser.add_subparsers())
+    return root_parser
 
 
+def add_subparsers(subparsers):
+    parser_list = subparsers.add_parser('list')
+    parser_list.add_argument('target_list', nargs='?',
+                             help='Name of the list or list file')
+    parser_list.set_defaults(func=get_list)
+
+    parser_cat = subparsers.add_parser('category')
+    parser_cat.add_argument('category_title', nargs='?',
+                             help='Name of the category')
+    parser_cat.add_argument('-l', '--limit', type=int, default=DEFAULT_LIMIT,
+                            help='number of articles')
+    parser_cat.set_defaults(func=get_category)
+
+    parser_rand = subparsers.add_parser('random')
+    parser_rand.add_argument('-l', '--limit', type=int, default=DEFAULT_LIMIT,
+                            help='number of articles')
+    parser_rand.set_defaults(func=get_random)
+
+    return
+
+
+@article_list.needs_alm
+def get_list(alm, target_list=None, **kw):
+    target_list_path = os.path.join(alm.output_path, target_list + article_list.DEFAULT_EXT)
+    if target_list_path:
+        al = article_list.ArticleList.from_file(target_list_path)
+        titles = al.titles
+        page_ds = wapiti.get_infos_by_title(titles)
+        filename = target_list
+        start_louper(alm, page_ds=page_ds, filename=filename)
+    else:
+        raise IOError('%s does not exist' % target_list_path)
+
+
+def get_category(**kw):
+    print 'Fetching ', kw['limit'], ' members of category ', kw['limit'], '...'
+    page_ds = wapiti.get_category(kw['category_title'], count=kw['limit'], to_zero_ns=True)
+    filename = get_filename(kw['category'][:15])
+    start_louper(None, page_ds=page_ds, filename=filename)
+
+def get_random(**kw):
+    print 'Fetching', kw['limit'], ' random articles...'
+    page_ds = wapiti.get_random(kw['limit'])
+    filename = get_filename('random')
+    start_louper(None, page_ds=page_ds, filename=filename)
+
+@article_list.needs_alm
+def start_louper(alm, page_ds=None, filename=None, debug=False, **kwargs):
+    # TODO: more generalized path manager
+    output_path = os.path.join(alm.output_path, '..', 'fetch_data')
+    res_filename = os.path.join(output_path, filename + '.json')
+    report_filename = os.path.join(output_path, filename + '-report.html')
+
+    lpr = Louper(page_ds, filename=res_filename, inputs=DEFAULT_INPUTS, **kwargs)
+
+    dash = LoupeDashboard(lpr)
+    dash.run()
+
+    try:
+        lpr.run()
+    finally:
+        lpr.close()
+        with codecs.open(report_filename, 'w', 'utf-8') as rf:
+            rf.write(dash.get_report())
+        if debug:
+            import pdb;pdb.set_trace()
+
+
+def main():
+    parser = create_parser()
+    args = parser.parse_args()
+    kwargs = dict(args._get_kwargs())
+    args.func(**kwargs)
+
+'''
 def main():
     opts, args = parse_args()
     kwargs = opts.__dict__
@@ -266,7 +349,7 @@ def main():
             rf.write(dash.get_report())
         if kwargs.get('debug'):
             import pdb;pdb.set_trace()
-
+'''
 
 if __name__ == '__main__':
     main()

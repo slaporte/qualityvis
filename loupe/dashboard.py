@@ -4,7 +4,7 @@ from bottle import Bottle, JSONPlugin, run, TemplatePlugin, template
 from bottle import static_file
 from collections import defaultdict
 import sys
-import wapiti
+from lib import wapiti
 
 import psutil
 import os

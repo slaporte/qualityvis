@@ -93,6 +93,10 @@ class ArticleList(object):
         tmpl = '# created={created} name={name} format={format}'
         return tmpl.format(created=created, name=name, format=format)
 
+    @property
+    def titles(self):
+        return [a.name for a in self.get_articles()]
+
     def include(self, article_list, term=None, source=None):
         self.do_action('include', article_list, term=term, source=source)
 
@@ -288,21 +292,21 @@ def create(alm, target_list, **kw):
 
 @needs_alm
 def list_op(alm, op_name, search_target, target_list, limit=DEFAULT_LIMIT, recursive=False, **kw):
-    target_list_path = alm.lookup(target_list)
-    if not target_list_path:
+    target_list = os.path.join(alm.output_path, target_list + DEFAULT_EXT)
+    if not target_list:
         raise IOError('file not found for target list: %s' % target_list)
-    a_list = ArticleList.from_file(target_list_path)
+    a_list = ArticleList.from_file(target_list)
     if search_target.startswith('Category:'):
-        article_list = wapiti.get_category_recursive(search_target, page_limit=limit, to_zero_ns=True)
+        article_list = wapiti.get_category_recursive(search_target, page_limit=limit)
     elif search_target.startswith('Template:'):
         article_list = wapiti.get_transcluded(page_title=search_target, limit=limit, to_zero_ns=True)
 
     if op_name == 'include':
         a_list.include([a[2] for a in article_list], source=DEFAULT_SOURCE, term=search_target)
-        a_list.write(target_list_path)
+        a_list.write(target_list)
     elif op_name == 'exclude':
         a_list.exclude([a[2] for a in article_list], source=DEFAULT_SOURCE, term=search_target)
-        a_list.write(target_list_path)
+        a_list.write(target_list)
     # TODO: summary
     # TODO: tests
     # TODO: convert this function to a decorator thing

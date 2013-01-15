@@ -1,5 +1,5 @@
 from base import Input
-from wapiti import get_url
+from lib.wapiti import get_url
 
 class Wikitrust(Input):
     prefix = 'wt'

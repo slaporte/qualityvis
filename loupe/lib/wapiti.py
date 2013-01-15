@@ -74,7 +74,7 @@ class CachedWapiti(object):
 
     def _hash(self, **kw):
         pass
-
+'''
     def get_category_recursive(self, cat_name, page_limit=DEFAULT_MAX_COUNT, *a, **kw):
         cats = {}
         ret = []
@@ -88,7 +88,7 @@ class CachedWapiti(object):
             cats[category] = get_categories([category])
 
         return ret
-
+'''
 
 class WikiException(Exception):
     pass

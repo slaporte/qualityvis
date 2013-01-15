@@ -7,6 +7,7 @@ import ConfigParser
 from argparse import ArgumentParser
 
 import article_list
+import fetch
 
 _DEFAULT_DIR_PERMS = 0755
 _CURDIR = os.path.abspath(os.path.dirname(__file__))
@@ -72,6 +73,9 @@ def create_parser():
 
     prs_list = subprs.add_parser('list')
     article_list.add_subparsers(prs_list.add_subparsers())
+
+    prs_fetch = subprs.add_parser('fetch')
+    fetch.add_subparsers(prs_fetch.add_subparsers())
 
     return prs
 """

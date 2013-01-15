@@ -1,4 +1,4 @@
-import wapiti
+from lib import wapiti
 from base import Input
 
 
