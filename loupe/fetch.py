@@ -243,7 +243,7 @@ def main():
         filename = get_filename('random')
     elif kwargs.get('recursive'):
         print 'Fetching members of category', opts.category, '...'
-        page_ds = wapiti.get_category_recursive(opts.category, count=opts.limit, to_zero_ns=True)
+        page_ds = wapiti.get_category_recursive(opts.category, page_limit=opts.limit, to_zero_ns=True)
         filename = get_filename(opts.category[:15])
     else:
         print 'Fetching members of category', opts.category, '...'

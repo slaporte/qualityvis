@@ -293,7 +293,7 @@ def list_op(alm, op_name, search_target, target_list, limit=DEFAULT_LIMIT, recur
         raise IOError('file not found for target list: %s' % target_list)
     a_list = ArticleList.from_file(target_list_path)
     if search_target.startswith('Category:'):
-        article_list = wapiti.get_category_recursive(search_target, count=limit, to_zero_ns=True)
+        article_list = wapiti.get_category_recursive(search_target, page_limit=limit, to_zero_ns=True)
     elif search_target.startswith('Template:'):
         article_list = wapiti.get_transcluded(page_title=search_target, limit=limit, to_zero_ns=True)
 

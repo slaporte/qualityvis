@@ -3,6 +3,8 @@ import time
 from datetime import datetime
 import re
 import itertools
+import os
+from os.path import join as pjoin
 import requests
 import json
 from sys import maxint
@@ -24,18 +26,74 @@ else:
     PER_CALL_LIMIT = 500
 
 API_URL = "http://en.wikipedia.org/w/api.php"
-DEFAULT_CONC     = 100
+DEFAULT_CONC     = 50
 DEFAULT_PER_CALL = 4
 DEFAULT_TIMEOUT  = 15
 DEFAULT_HEADERS = { 'User-Agent': 'Loupe/0.0.0 Mahmoud Hashemi makuro@gmail.com' }
 DEFAULT_MAX_COUNT = maxint
+MAX_ARTICLES_LIST = 50
 
-socket.setdefaulttimeout(DEFAULT_TIMEOUT) # TODO: better timeouts for fake requests
+
+###################
+_DEFAULT_DIR_PERMS = 0755
+socket.setdefaulttimeout(DEFAULT_TIMEOUT)  # TODO: better timeouts for fake requests
+
+
+class CachedWapiti(object):
+    def __init__(self, cache_path):
+        self.root_path = cache_path
+        self._init_dir(self.root_path)
+
+    def __getattr__(self, name):
+        try:
+            return globals()[name]
+        except KeyError:
+            raise AttributeError('no attribute named %s' % name)
+
+    def _init_dir(self, path):
+        path = os.path.normpath(path)
+        dirs = ['category', 'template', 'page_info']
+        for d in dirs:
+            path_to_create = pjoin(path, d)
+            try:
+                os.makedirs(path_to_create, _DEFAULT_DIR_PERMS)
+            except OSError:
+                if not os.path.isdir(path_to_create):
+                    raise
+        return
+
+    @property
+    def subcategories(self):
+        pass
+
+    def _check_cache(self, hash):
+        pass
+
+    def _save_cache(self, hash):
+        pass
+
+    def _hash(self, **kw):
+        pass
+
+    def get_category_recursive(self, cat_name, page_limit=DEFAULT_MAX_COUNT, *a, **kw):
+        cats = {}
+        ret = []
+        hashed_cat = self._hash(func=flatten_category, cat_name=cat_name, page_limit=DEFAULT_MAX_COUNT)
+        categories = self._check_cache(hashed_cat)
+        if not categories:
+            categories = flatten_category(cat_name, page_limit=page_limit)
+        for category in categories:
+            category_hash = self._hash(func=get_categories, cat_name=category, page_limit=DEFAULT_MAX_COUNT)
+            if not
+            cats[category] = get_categories([category])
+
+        return ret
 
 
 class WikiException(Exception):
     pass
 PageIdentifier = namedtuple("PageIdentifier", "page_id, ns, title")
+CategoryInfo = namedtuple('Category', 'title, page_id, ns, size, pages, files, subcats')
 Page = namedtuple("Page", "title, req_title, namespace, page_id, rev_id, rev_text, is_parsed, fetch_date, fetch_duration")
 RevisionInfo = namedtuple('RevisionInfo', 'page_title, page_id, namespace, rev_id, rev_parent_id, user_text, user_id, length, time, sha1, comment, tags')
 
@@ -324,7 +382,7 @@ def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, namespaces=No
         try:
             qres = resp.results['query']
         except:
-            break #hmmm
+            break  # hmmm
 
         for k, cm in qres['pages'].iteritems():
             if not cm.get('pageid'):
@@ -347,7 +405,7 @@ def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, namespaces=No
 
             if namespaces and namespace not in namespaces:
                 continue
-            
+
             ret.append(PageIdentifier(title=title,
                                       page_id=page_id,
                                       ns=namespace))
@@ -358,32 +416,140 @@ def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, namespaces=No
     return ret
 
 
-def get_category_recursive(cat_name, count=DEFAULT_MAX_COUNT, depth_first=True, *a, **kw):
-    ret = []
-    ret_set = set()
-    cats = deque([cat_name])
-    seen_cats = set(cats)
-    while len(ret) < count and len(cats) > 0:
+def flatten_category(cat_name, page_limit=DEFAULT_MAX_COUNT, depth_first=True, *a, **kw):
+    cat_names = deque([cat_name])
+    seen_cat_names = set(cat_names)
+    cat_infos = set()
+    page_count = 0
+    while cat_names:
+        if page_limit and page_limit < page_count:
+            break
         if depth_first:
-            cur_cat = cats.popleft()
+            cur_cat = cat_names.popleft()
         else:
-            cur_cat = cats.pop()
+            cur_cat = cat_names.pop()
+        print cur_cat, len(cat_names), page_count
+        subcat_infos = get_subcategory_infos(cur_cat)
+        for cat_info in subcat_infos:
+            if cat_info.title not in seen_cat_names:
+                seen_cat_names.add(cat_info.title)
+                if cat_info.subcats > 0:
+                    cat_names.append(cat_info.title)
+                cat_infos.add(cat_info)
+                page_count += cat_info.pages
+    return cat_infos
 
-        cur_res = get_category(cur_cat, count, *a, **kw)
 
-        for r in cur_res:
-            if r.ns == NAMESPACES['Category']: #Category namespace
-                if r.title not in seen_cats:
-                    cats.append(r.title)
-                    seen_cats.add(r.title)
+def get_categories(cat_infos, page_limit=DEFAULT_MAX_COUNT, namespaces=None, sortby='pages', *a, **kw):
+    ret = []
+    sorted_cat_infos = list(cat_infos)
+    if sortby:
+        sorted_cat_infos = sorted(sorted_cat_infos,
+            key=lambda x: getattr(x, sortby))
+    while len(ret) < page_limit and sorted_cat_infos:
+        cur_cat = sorted_cat_infos.pop()
+        ret.extend(get_category(cur_cat.title, namespaces=namespaces))
+    return ret[:page_limit]
+
+
+def get_category_recursive(cat_name, page_limit=DEFAULT_MAX_COUNT):
+    categories = flatten_category(cat_name, page_limit)
+    return get_categories(categories, page_limit)
+
+
+def get_subcategory_infos(cat_name):
+    ret = []
+    cont_str = ''
+    while cont_str is not None:
+        params = {'generator': 'categorymembers',
+                  'gcmtitle':   cat_name,
+                  'prop':       'categoryinfo',
+                  'gcmtype':    'subcat',
+                  'gcmlimit':    PER_CALL_LIMIT,
+                  'gcmcontinue': cont_str}
+        resp = api_req('query', params)
+        try:
+            qres = resp.results['query']
+        except:
+            break  # hmmm
+
+        for k, cm in qres['pages'].iteritems():
+            if not cm.get('pageid') or k < 0:
+                continue
+            namespace = cm['ns']
+            title = cm['title']
+            page_id = cm['pageid']
+            ci = cm.get('categoryinfo')
+            if ci:
+                size = ci['size']
+                pages = ci['pages']
+                files = ci['files']
+                subcats = ci['subcats']
             else:
-                if r.title not in ret_set:
-                    ret.append(r)
-                    ret_set.add(r.title)
-            if len(ret) >= count:
-                break
-            
+                size, pages, files, subcats = (0, 0, 0, 0)
+            ret.append(CategoryInfo(title=title,
+                                      page_id=page_id,
+                                      ns=namespace,
+                                      size=size,
+                                      pages=pages,
+                                      files=files,
+                                      subcats=subcats))
+        try:
+            cont_str = resp.results['query-continue']['categorymembers']['gcmcontinue']
+        except:
+            cont_str = None
     return ret
+
+
+def join_titles(orig_titles, prefix=None):
+    titles = []
+    if isinstance(orig_titles, basestring):
+        orig_titles = [orig_titles]
+    if prefix:
+        for title in orig_titles:
+            if not title.startswith(prefix):
+                title = prefix + title
+            titles.append(title)
+    else:
+        titles = orig_titles
+    return "|".join([unicode(t) for t in titles])
+
+
+def get_category_infos(cat_names, cont_str=""):
+    ret = []
+    while cont_str is not None:
+        params = {'prop': 'categoryinfo',
+                  'titles': join_titles(cat_names, 'Category:')}
+        resp = api_req('query', params)
+        try:
+            qres = resp.results['query']
+        except:
+            break  # hmmm
+
+        for k, cm in qres['pages'].iteritems():
+            if not cm.get('pageid'):
+                continue
+            title = cm['title']
+            page_id = k
+            namespace = cm['ns']
+            size = cm['categoryinfo']['size']
+            pages = cm['categoryinfo']['pages']
+            files = cm['categoryinfo']['files']
+            subcats = cm['categoryinfo']['subcats']
+
+            ret.append(CategoryInfo(title=title,
+                                    page_id=page_id,
+                                      ns=namespace,
+                                      size=size,
+                                      pages=pages,
+                                      files=files,
+                                      subcats=subcats))
+        try:
+            cont_str = resp.results['query-continue']['categoryinfo']['cicontinue']
+        except:
+            cont_str = None
+    return ret
+
 
 # TODO: default 'limit' to infinity/all
 def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=PER_CALL_LIMIT, to_zero_ns=True):
@@ -442,6 +608,29 @@ def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=PER_CA
             cont_str = resp.results['query-continue']['embeddedin']['geicontinue']
         except:
             cont_str = None
+    return ret
+
+
+def get_infos_by_title(titles, **kwargs):
+    ret = []
+    params = {}
+    if isinstance(titles, basestring):
+        return get_infos_by_title([titles])
+    if len(titles) > MAX_ARTICLES_LIST:
+        for page_chunk in chunked_pimap(get_infos_by_title, titles, chunk_size=MAX_ARTICLES_LIST):
+            ret.extend(page_chunk)
+    else:
+        try:
+            titles = "|".join([unicode(t) for t in titles])
+        except:
+            print "Couldn't join: ", repr(titles)
+        params['titles'] = titles
+        params['prop'] = 'info'
+        pages = api_req('query', params).results['query']['pages']
+        for page_id, info in pages.items():
+            ret.append(PageIdentifier(title=info['title'],
+                                       page_id=info['pageid'],
+                                       ns=info['ns']))
     return ret
 
 
@@ -668,6 +857,7 @@ def get_revision_infos(page_title=None, page_id=None, limit=PER_CALL_LIMIT, cont
 
 
 def chunked_pimap(func, iterable, concurrency=DEFAULT_CONC, chunk_size=DEFAULT_PER_CALL, **kwargs):
+    from gevent.pool import Pool
     func = partial(func, **kwargs)
     chunked = (iterable[i:i + chunk_size]
                for i in xrange(0, len(iterable), chunk_size))
