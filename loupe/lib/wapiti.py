@@ -16,6 +16,9 @@ import urllib2
 import socket
 from StringIO import StringIO
 import gzip
+import hashlib
+import tempfile
+import pickle
 
 
 IS_BOT = False
@@ -32,23 +35,44 @@ DEFAULT_TIMEOUT  = 15
 DEFAULT_HEADERS = { 'User-Agent': 'Loupe/0.0.0 Mahmoud Hashemi makuro@gmail.com' }
 DEFAULT_MAX_COUNT = maxint
 MAX_ARTICLES_LIST = 50
+DEFAULT_CACHE_TIMEOUT = 1209600
 
 
 ###################
 _DEFAULT_DIR_PERMS = 0755
 socket.setdefaulttimeout(DEFAULT_TIMEOUT)  # TODO: better timeouts for fake requests
+CACHE_EXT = '.wapiti_cache'
+CACHE_PATH = 'wapiti_cache'
 
 
 class CachedWapiti(object):
-    def __init__(self, cache_path):
+    def __init__(self, cache_path=''):
         self.root_path = cache_path
         self._init_dir(self.root_path)
 
     def __getattr__(self, name):
-        try:
-            return globals()[name]
-        except KeyError:
-            raise AttributeError('no attribute named %s' % name)
+        cached = ['get_category', 
+                  'flatten_category',
+                  'get_category_recursive',
+                  'get_transcluded',
+                  'get_articles_by_title',
+                  'get_articles',
+                  'get_talk_page',
+                  'get_backlinks',
+                  'get_langlinks',
+                  'get_interwikilinks',
+                  'get_protection',
+                  'get_feedback_stats',
+                  'get_feedbackv5_count',
+                  'get_revision_infos'
+                  ]
+        if name in cached:
+            return CachedFunction(name)
+        else:
+            try:
+                return globals()[name]
+            except KeyError:
+                raise AttributeError('no attribute named %s' % name)
 
     def _init_dir(self, path):
         path = os.path.normpath(path)
@@ -61,39 +85,100 @@ class CachedWapiti(object):
                 if not os.path.isdir(path_to_create):
                     raise
         return
+        
 
-    @property
-    def subcategories(self):
-        pass
-
-    def _check_cache(self, hash):
-        pass
-
-    def _save_cache(self, hash):
-        pass
-
-    def _hash(self, **kw):
-        pass
-'''
-    def get_category_recursive(self, cat_name, page_limit=DEFAULT_MAX_COUNT, *a, **kw):
-        cats = {}
-        ret = []
-        hashed_cat = self._hash(func=flatten_category, cat_name=cat_name, page_limit=DEFAULT_MAX_COUNT)
-        categories = self._check_cache(hashed_cat)
-        if not categories:
-            categories = flatten_category(cat_name, page_limit=page_limit)
-        for category in categories:
-            category_hash = self._hash(func=get_categories, cat_name=category, page_limit=DEFAULT_MAX_COUNT)
-            if not
-            cats[category] = get_categories([category])
-
+    def get_category(self, *a, **kw):
+        cached_get_category = FileCache('get_category', *a, **kw)
+        ret = cached_get_category.get()
+        if ret is not None:
+            return ret
+        ret = get_category(*a, **kw)
+        cached_get_category.save(ret)
         return ret
+
+
 '''
+def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, namespaces=None, cont_str=""):
+def flatten_category(cat_name, page_limit=DEFAULT_MAX_COUNT, depth_first=True, *a, **kw):
+def get_categories(cat_infos, page_limit=DEFAULT_MAX_COUNT, namespaces=None, sortby='pages', *a, **kw):
+def get_category_recursive(cat_name, page_limit=DEFAULT_MAX_COUNT):
+def get_subcategory_infos(cat_name):
+def get_transcluded(page_title=None, page_id=None, namespaces=None, limit=PER_CALL_LIMIT, to_zero_ns=True):
+def get_infos_by_title(titles, **kwargs):
+def get_articles_by_title(titles, **kwargs):
+def get_articles(page_ids=None, titles=None,
+def get_talk_page(title):
+def get_backlinks(title, count=PER_CALL_LIMIT, limit=DEFAULT_MAX_COUNT, cont_str='', **kwargs):
+def get_langlinks(title, limit=DEFAULT_MAX_COUNT, cont_str='', **kwargs):
+def get_interwikilinks(title, **kwargs):
+def get_protection(title, **kwargs):
+def get_feedback_stats(page_id, **kwargs):
+def get_feedbackv5_count(page_id, **kwargs):
+def get_revision_infos(page_title=None, page_id=None, limit=PER_CALL_LIMIT, cont_str=""):
+
+
+'''
+
+class CachedFunction(object):
+    def __init__(self, name):
+        self.name = name
+
+    def __call__(self, *a, **kw):
+        c_result = FileCache(self.name, *a, **kw)
+        ret = c_result.get()
+        if ret is not None:
+            return ret
+        ret = globals()[self.name](*a, **kw)
+        c_result.save(ret)
+        return ret
+
+class FileCache(object):
+    def __init__(self, function, *args, **kw):
+        if not os.path.exists(CACHE_PATH):
+            os.makedirs(CACHE_PATH)
+        self.filename = os.path.join(CACHE_PATH, self.identifier(function, *args, **kw) + CACHE_EXT)
+        self.timeout = DEFAULT_CACHE_TIMEOUT
+
+
+    def identifier(self, func_name, *a, **args):
+        f_a = str(a)
+        f_str = str(func_name)
+        f_args = str(args)
+
+        return hashlib.sha1(f_str + f_a + f_args).hexdigest()
+
+    def get(self):
+        filename = self.filename
+        try:
+            f = open(filename, 'rb')
+            try:
+                if pickle.load(f) >= time.time():
+                    return pickle.load(f)
+            finally:
+                f.close()
+        except Exception:
+            return None
+
+    def save(self, value):
+        filename = self.filename
+        try:
+            fd, tmp = tempfile.mkstemp()
+            f = os.fdopen(fd, 'wb')
+            try:
+                pickle.dump(int(time.time() + self.timeout), f, 1)
+                pickle.dump(value, f, pickle.HIGHEST_PROTOCOL)
+            finally:
+                f.close()
+            os.rename(tmp, filename)
+            os.chmod(filename, _DEFAULT_DIR_PERMS)
+        except (IOError, OSError):
+            pass
+
 
 class WikiException(Exception):
     pass
 PageIdentifier = namedtuple("PageIdentifier", "page_id, ns, title")
-CategoryInfo = namedtuple('Category', 'title, page_id, ns, size, pages, files, subcats')
+CategoryInfo = namedtuple('CategoryInfo', 'title, page_id, ns, size, pages, files, subcats')
 Page = namedtuple("Page", "title, req_title, namespace, page_id, rev_id, rev_text, is_parsed, fetch_date, fetch_duration")
 RevisionInfo = namedtuple('RevisionInfo', 'page_title, page_id, namespace, rev_id, rev_parent_id, user_text, user_id, length, time, sha1, comment, tags')
 
@@ -368,6 +453,8 @@ def get_random(limit=10):
 
 def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, namespaces=None, cont_str=""):
     ret = []
+    if isinstance(namespaces, basestring):
+        namespaces = [namespaces]
     if not cat_name.startswith('Category:'):
         cat_name = 'Category:' + cat_name
     while len(ret) < count and cont_str is not None:
@@ -404,7 +491,8 @@ def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, namespaces=No
 
 
             if namespaces and namespace not in namespaces:
-                continue
+                print 'found one in namespace: ', namespace
+
 
             ret.append(PageIdentifier(title=title,
                                       page_id=page_id,
@@ -454,7 +542,7 @@ def get_categories(cat_infos, page_limit=DEFAULT_MAX_COUNT, namespaces=None, sor
 
 def get_category_recursive(cat_name, page_limit=DEFAULT_MAX_COUNT):
     categories = flatten_category(cat_name, page_limit)
-    return get_categories(categories, page_limit)
+    return get_categories(categories, page_limit, namespaces=1)
 
 
 def get_subcategory_infos(cat_name):
