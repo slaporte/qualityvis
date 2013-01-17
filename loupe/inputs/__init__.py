@@ -1,5 +1,5 @@
 from base import Input
-from lib.wapiti import get_json, get_url  # TODO: necessary here?
+from wapiti import get_json, get_url  # TODO: necessary here?
 
 from backlinks import Backlinks
 from feedback import FeedbackV4
@@ -16,4 +16,4 @@ from watchers import Watchers
 from article_history import ArticleHistory
 from protection import Protection
 
-DEFAULT_INPUTS = [DOM, ArticleHistory, Protection]
+DEFAULT_INPUTS = [Backlinks, LangLinks, InterWikiLinks, FeedbackV4, FeedbackV5, DOM, GoogleNews, GoogleSearch, PageViews, Revisions, Watchers, Protection, ArticleHistory]
