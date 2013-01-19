@@ -8,6 +8,7 @@ from os.path import join as pjoin
 import requests
 import json
 from sys import maxint
+import sys
 
 from collections import namedtuple, deque
 from functools import partial
@@ -87,15 +88,6 @@ class CachedWapiti(object):
         return
         
 
-    def get_category(self, *a, **kw):
-        cached_get_category = FileCache('get_category', *a, **kw)
-        ret = cached_get_category.get()
-        if ret is not None:
-            return ret
-        ret = get_category(*a, **kw)
-        cached_get_category.save(ret)
-        return ret
-
 
 '''
 def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, namespaces=None, cont_str=""):
@@ -153,6 +145,7 @@ class FileCache(object):
             f = open(filename, 'rb')
             try:
                 if pickle.load(f) >= time.time():
+                    print 'Loading from cache\n###'
                     return pickle.load(f)
             finally:
                 f.close()
@@ -451,21 +444,29 @@ def get_random(limit=10):
     return ret
 
 
-def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, namespaces=None, cont_str=""):
+def get_category(cat_name, page_limit=DEFAULT_MAX_COUNT, to_zero_ns=False, namespaces=None, cont_str=""):
     ret = []
-    if isinstance(namespaces, basestring):
+    retries = 0
+    if not isinstance(namespaces, list):
         namespaces = [namespaces]
     if not cat_name.startswith('Category:'):
         cat_name = 'Category:' + cat_name
-    while len(ret) < count and cont_str is not None:
-        cur_count = min(count - len(ret), PER_CALL_LIMIT)
+    while len(ret) < page_limit and cont_str is not None:
+        cur_count = min(page_limit - len(ret), PER_CALL_LIMIT)
         params = {'generator': 'categorymembers',
                   'gcmtitle':   cat_name,
                   'prop':       'info',
                   'inprop':     'title|pageid|ns|subjectid|protection',
                   'gcmlimit':    cur_count,
                   'gcmcontinue': cont_str}
-        resp = api_req('query', params)
+        try:
+            resp = api_req('query', params)
+        except Exception as e:
+            if retries > 4:
+                break
+            print e, ', retrying ', (4 - retries), 'more times'
+            retries +=1
+            continue
         try:
             qres = resp.results['query']
         except:
@@ -491,12 +492,12 @@ def get_category(cat_name, count=PER_CALL_LIMIT, to_zero_ns=False, namespaces=No
 
 
             if namespaces and namespace not in namespaces:
-                print 'found one in namespace: ', namespace
-
+                continue
 
             ret.append(PageIdentifier(title=title,
                                       page_id=page_id,
                                       ns=namespace))
+
         try:
             cont_str = resp.results['query-continue']['categorymembers']['gcmcontinue']
         except:
@@ -536,18 +537,20 @@ def get_categories(cat_infos, page_limit=DEFAULT_MAX_COUNT, namespaces=None, sor
             key=lambda x: getattr(x, sortby))
     while len(ret) < page_limit and sorted_cat_infos:
         cur_cat = sorted_cat_infos.pop()
-        ret.extend(get_category(cur_cat.title, namespaces=namespaces))
+        ret.extend(get_category(cur_cat.title, namespaces=namespaces, page_limit=page_limit))
+        print len(ret), '/', page_limit, ', added', cur_cat.title
     return ret[:page_limit]
 
 
 def get_category_recursive(cat_name, page_limit=DEFAULT_MAX_COUNT):
     categories = flatten_category(cat_name, page_limit)
-    return get_categories(categories, page_limit, namespaces=1)
+    return get_categories(categories, page_limit, namespaces=0)
 
 
 def get_subcategory_infos(cat_name):
     ret = []
     cont_str = ''
+    retries = 0
     while cont_str is not None:
         params = {'generator': 'categorymembers',
                   'gcmtitle':   cat_name,
@@ -555,7 +558,14 @@ def get_subcategory_infos(cat_name):
                   'gcmtype':    'subcat',
                   'gcmlimit':    PER_CALL_LIMIT,
                   'gcmcontinue': cont_str}
-        resp = api_req('query', params)
+        try:
+            resp = api_req('query', params)
+        except Exception as e:
+            if retries > 4:
+                break
+            print e, ', retrying ', (4 - retries), 'more times'
+            retries +=1
+            continue
         try:
             qres = resp.results['query']
         except:
