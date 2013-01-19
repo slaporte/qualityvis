@@ -1,6 +1,6 @@
 from base import Input
-from wapiti import get_url
-import wapiti
+from lib.wapiti import get_url
+from lib import wapiti
 from pyquery import PyQuery
 
 from stats import dist_stats

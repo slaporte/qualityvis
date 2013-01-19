@@ -1,4 +1,4 @@
-import wapiti
+import lib.wapiti as wapiti
 import re
 import copy
 from base import Input
@@ -6,6 +6,7 @@ from dateutil.parser import parse
 from collections import OrderedDict
 from datetime import datetime
 
+wapiti = wapiti.CachedWapiti
 
 def find_rating(text, rating_type='assessment'):
     if rating_type == 'importance':

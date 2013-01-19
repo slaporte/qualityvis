@@ -1,5 +1,5 @@
 from base import Input
-from wapiti import get_json, get_url  # TODO: necessary here?
+from lib.wapiti import get_json, get_url  # TODO: necessary here?
 
 from backlinks import Backlinks
 from feedback import FeedbackV4
